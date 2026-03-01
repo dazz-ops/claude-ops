@@ -1,7 +1,7 @@
 ---
 tools: Read,Grep,Glob,Bash
 mode: read-only
-skills: fresh-eyes-review, review-protocol, security-review, run-validation, generate-tests
+skills: fresh-eyes-review, review-protocol, security-review, run-validation
 ---
 
 # QA Engineer Agent

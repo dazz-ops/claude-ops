@@ -1,0 +1,16 @@
+{
+  "targets": [],
+  "defaults": {
+    "worker_timeout": 600,
+    "max_invocations_per_job": 3,
+    "max_daily_invocations": 20,
+    "log_retention_days": 7
+  },
+  "notifications": {
+    "enabled": false,
+    "method": "terminal-notifier",
+    "on_error": true,
+    "on_pr_created": true,
+    "on_budget_exceeded": true
+  }
+}

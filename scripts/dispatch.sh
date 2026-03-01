@@ -513,9 +513,22 @@ main() {
     exit 0
   fi
 
-  # Lock
-  acquire_target_lock "$TARGET" || exit 1
-  trap 'release_target_lock "$TARGET"' EXIT
+  # Lock — only read-write roles need exclusive access.
+  # Read-only roles (PM, QA, Tech Lead) can run concurrently.
+  if [[ "$ROLE_MODE" == "read-write" ]]; then
+    acquire_target_lock "$TARGET" || exit 1
+    trap 'release_target_lock "$TARGET"' EXIT
+
+    # Verify target repo has a clean working tree before a write agent runs.
+    # Prevents building on top of a crashed previous run's uncommitted changes.
+    local dirty
+    dirty=$(cd "$target_path" && git status --porcelain 2>/dev/null | head -1)
+    if [[ -n "$dirty" ]]; then
+      log_error "Target repo has uncommitted changes — refusing to dispatch a write agent"
+      log_error "Inspect: cd $target_path && git status"
+      exit 1
+    fi
+  fi
 
   log_info "Dispatching: role=$ROLE target=$TARGET"
   log_info "Task: $TASK"

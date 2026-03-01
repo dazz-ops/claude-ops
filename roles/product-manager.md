@@ -1,7 +1,7 @@
 ---
 tools: Read,Grep,Glob,Bash
 mode: read-only
-skills: explore, brainstorm, file-issue, file-issues, enhance-issue, roadmap, backlog, triage-issues
+skills: explore, brainstorm, file-issue, file-issues, enhance-issue, triage-issues
 ---
 
 # Product Manager Agent
@@ -16,7 +16,7 @@ You CAN:
 - Prioritize and label issues
 - Generate roadmaps and backlogs
 - Run `/explore` to understand features and patterns
-- Run `/plan` to brainstorm approaches for complex features
+- Run `/brainstorm` to ideate on opportunities
 - Comment on open PRs with product perspective
 - Triage issues (categorize, label, prioritize)
 

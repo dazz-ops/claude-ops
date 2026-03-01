@@ -3,22 +3,38 @@ set -euo pipefail
 
 # Tech Lead: Weekly architecture review
 # Schedule: Friday at 3:00 PM
-# Cron: 0 15 * * 5 /Users/austin/Git_Repos/claude-ops/jobs/tech-lead-review.sh
+# Cron: 0 15 * * 5 /path/to/claude-ops/jobs/tech-lead-review.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 "${SCRIPT_DIR}/scripts/dispatch.sh" \
   --role tech-lead \
   --target claude-agent-protocol \
-  --timeout 900 \
-  --task "Weekly architecture review.
-1. Review all commits from the past week: git log --oneline --since='7 days ago'
-2. Check for architectural concerns:
-   a. New dependencies added? Review justification
-   b. New patterns introduced? Are they consistent with existing conventions?
-   c. Growing complexity? Any files over 500 lines that should be split?
-   d. Test coverage gaps? New code without tests?
-3. Review any open plans in docs/plans/ — comment on architectural risks
-4. Check docs/solutions/ for recurring problems that suggest architectural issues
-5. If you identify architectural concerns, comment on relevant PRs or file issues with 'architecture' and 'tech-debt' labels
-6. Summarize: what's good, what's concerning, and any recommended actions"
+  --timeout 1800 \
+  --task "Weekly architecture review. Focus on patterns and structure, NOT line-level code quality (QA handles that).
+
+STEP 1 — Review the week's changes:
+  Run: git log --oneline --since='7 days ago'
+  Read the diffs of significant commits to understand what changed.
+
+STEP 2 — Check architectural concerns:
+  a. New dependencies: Were any added? Are they justified? Check for lighter alternatives.
+  b. Pattern consistency: Do new files follow existing conventions (naming, structure, imports)?
+  c. Complexity growth: Any files over 500 lines that should be split? Any god-objects forming?
+  d. Module boundaries: Are concerns properly separated? Any circular dependencies emerging?
+  e. Test strategy: Is the test approach consistent? Any gaps in integration vs unit coverage?
+
+STEP 3 — Review open plans:
+  Check docs/plans/ for any plans awaiting review. Comment on architectural risks or missing considerations.
+
+STEP 4 — Check for recurring problems:
+  Review docs/solutions/ — if the same type of problem keeps appearing, that suggests an architectural issue.
+
+STEP 5 — File issues for concerns:
+  For each architectural concern, file a GitHub issue:
+  - Label with 'architecture' and 'tech-debt'
+  - Add priority label
+  - If proposing an ADR, include the full ADR text in the issue body
+  Comment on relevant PRs if they have architectural implications.
+
+STEP 6 — Summarize: what's solid, what's concerning, and recommended actions."

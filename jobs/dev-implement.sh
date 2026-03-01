@@ -9,6 +9,20 @@ set -euo pipefail
 # The schedule spaces runs so the lock is released between each.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LOG_DIR="${SCRIPT_DIR}/logs"
+mkdir -p "$LOG_DIR"
+TARGET_PATH=$(jq -r '.targets[] | select(.name == "claude-agent-protocol") | .path' "${SCRIPT_DIR}/config.json")
+
+# Polling guard: skip if no ready_for_dev issues exist
+if [[ -n "$TARGET_PATH" ]] && [[ -d "$TARGET_PATH" ]]; then
+  READY_COUNT=$(cd "$TARGET_PATH" && gh issue list --label ready_for_dev --state open --json number --jq length 2>/dev/null) || READY_COUNT=""
+  if [[ -z "$READY_COUNT" ]]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] dev-implement: WARNING — could not determine issue count (gh failed), proceeding." >> "${LOG_DIR}/cron.log"
+  elif [[ "$READY_COUNT" == "0" ]]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] dev-implement: No ready_for_dev issues, skipping." >> "${LOG_DIR}/cron.log"
+    exit 0
+  fi
+fi
 
 "${SCRIPT_DIR}/scripts/dispatch.sh" \
   --role developer \

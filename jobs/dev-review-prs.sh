@@ -10,6 +10,20 @@ set -euo pipefail
 # the PR. This reviewer catches anything the first pass missed.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LOG_DIR="${SCRIPT_DIR}/logs"
+mkdir -p "$LOG_DIR"
+TARGET_PATH=$(jq -r '.targets[] | select(.name == "claude-agent-protocol") | .path' "${SCRIPT_DIR}/config.json")
+
+# Polling guard: skip if no open PRs exist
+if [[ -n "$TARGET_PATH" ]] && [[ -d "$TARGET_PATH" ]]; then
+  PR_COUNT=$(cd "$TARGET_PATH" && gh pr list --state open --json number --jq length 2>/dev/null) || PR_COUNT=""
+  if [[ -z "$PR_COUNT" ]]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] dev-review-prs: WARNING — could not determine PR count (gh failed), proceeding." >> "${LOG_DIR}/cron.log"
+  elif [[ "$PR_COUNT" == "0" ]]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] dev-review-prs: No open PRs, skipping." >> "${LOG_DIR}/cron.log"
+    exit 0
+  fi
+fi
 
 "${SCRIPT_DIR}/scripts/dispatch.sh" \
   --role code-reviewer \

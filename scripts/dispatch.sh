@@ -105,6 +105,8 @@ record_invocation() {
   local target="$2"
   local duration="$3"
   local exit_code="$4"
+  local input_tokens="${5:-0}"
+  local output_tokens="${6:-0}"
   local budget_file="${STATE_DIR}/budget-$(date +%Y-%m-%d).json"
 
   if [[ -f "$budget_file" ]]; then
@@ -115,15 +117,17 @@ record_invocation() {
       "$budget_file" > "$tmp" && mv "$tmp" "$budget_file"
   fi
 
-  # Append to invocation log
+  # Append to invocation log (includes token usage for cost analysis)
   local log_entry
   log_entry=$(jq -nc \
     --arg role "$role" \
     --arg target "$target" \
     --argjson duration "$duration" \
     --argjson exit_code "$exit_code" \
+    --argjson input_tokens "$input_tokens" \
+    --argjson output_tokens "$output_tokens" \
     --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    '{timestamp: $timestamp, role: $role, target: $target, duration_s: $duration, exit_code: $exit_code}')
+    '{timestamp: $timestamp, role: $role, target: $target, duration_s: $duration, exit_code: $exit_code, input_tokens: $input_tokens, output_tokens: $output_tokens}')
   echo "$log_entry" >> "${STATE_DIR}/invocations.jsonl"
 }
 
@@ -218,12 +222,21 @@ load_role() {
 
   # Extract frontmatter fields using simple parsing
   ROLE_TOOLS=$(sed -n 's/^tools: *//p' "$role_file" | head -1)
+  ROLE_DISALLOWED_TOOLS=$(sed -n 's/^disallowedTools: *//p' "$role_file" | head -1)
   ROLE_SKILLS=$(sed -n 's/^skills: *//p' "$role_file" | head -1)
   ROLE_MODE=$(sed -n 's/^mode: *//p' "$role_file" | head -1)
 
   # Default tools if not specified
   if [[ -z "$ROLE_TOOLS" ]]; then ROLE_TOOLS="Read,Grep,Glob,Bash"; fi
   if [[ -z "$ROLE_MODE" ]]; then ROLE_MODE="read-only"; fi
+
+  # Safety check: read-only roles MUST have disallowedTools defined
+  ROLE_DISALLOWED_TOOLS="${ROLE_DISALLOWED_TOOLS## }"  # trim leading whitespace
+  ROLE_DISALLOWED_TOOLS="${ROLE_DISALLOWED_TOOLS%% }"  # trim trailing whitespace
+  if [[ "$ROLE_MODE" == "read-only" && -z "$ROLE_DISALLOWED_TOOLS" ]]; then
+    log_error "Role '${role_name}' is read-only but has no disallowedTools — aborting to prevent full access"
+    exit 1
+  fi
 
   # Extract prompt (everything after the second --- frontmatter delimiter)
   ROLE_PROMPT=$(awk 'BEGIN{c=0} /^---$/{c++; next} c>=2' "$role_file")
@@ -320,8 +333,16 @@ run_with_timeout() {
 }
 
 # Parse claude -p JSON output, extracting .result or reporting errors.
+# Sets LAST_INPUT_TOKENS and LAST_OUTPUT_TOKENS globals for cost tracking.
+LAST_INPUT_TOKENS=0
+LAST_OUTPUT_TOKENS=0
+
 parse_claude_output() {
   local tmpout="$1"
+
+  # Extract token usage before anything else (available even on errors)
+  LAST_INPUT_TOKENS=$(jq -r '.usage.input_tokens // 0' "$tmpout" 2>/dev/null) || LAST_INPUT_TOKENS=0
+  LAST_OUTPUT_TOKENS=$(jq -r '.usage.output_tokens // 0' "$tmpout" 2>/dev/null) || LAST_OUTPUT_TOKENS=0
 
   local result
   result=$(jq -r '.result // empty' "$tmpout" 2>/dev/null) || true
@@ -343,7 +364,7 @@ parse_claude_output() {
 
 invoke_agent() {
   local role_prompt="$1"
-  local tools="$2"
+  local disallowed_tools="$2"
   local task="$3"
   local target_path="$4"
   local timeout="$5"
@@ -356,11 +377,18 @@ invoke_agent() {
 
   # Build command — --dangerously-skip-permissions is required for headless
   # claude -p usage (no interactive TTY for permission prompts in cron jobs).
-  # Tool-level restrictions are enforced via --allowedTools per role.
+  # Tool-level restrictions enforced via --disallowedTools per role.
+  # NOTE: --allowedTools (whitelist) is broken in bypass mode (GitHub issue #12232).
+  # The denylist (--disallowedTools) works correctly and is used instead.
   local cmd=(claude -p "$full_prompt"
     --dangerously-skip-permissions
-    --output-format json
-    --allowedTools "$tools")
+    --output-format json)
+
+  # Only add --disallowedTools if the role specifies tools to deny.
+  # Developer role has an empty disallowedTools (full access).
+  if [[ -n "$disallowed_tools" ]]; then
+    cmd+=(--disallowedTools "$disallowed_tools")
+  fi
 
   # Execute in target directory with timeout
   local ec=0
@@ -370,11 +398,15 @@ invoke_agent() {
   if [[ $ec -eq 124 ]]; then
     log_warn "Agent timed out after ${timeout}s"
     rm -f "$tmpout"
-    return 1
+    return 124
+  elif [[ $ec -eq 143 ]]; then
+    log_warn "Agent killed (SIGTERM) — session may have been terminated by rate limiting"
+    rm -f "$tmpout"
+    return 143
   elif [[ $ec -ne 0 ]]; then
     log_warn "Agent exited with code $ec"
     rm -f "$tmpout"
-    return 1
+    return "$ec"
   fi
 
   parse_claude_output "$tmpout"
@@ -502,7 +534,8 @@ main() {
     echo "Role: $ROLE (mode: $ROLE_MODE)"
     echo "Target: $TARGET ($target_path)"
     echo "Task: $TASK"
-    echo "Tools: $ROLE_TOOLS"
+    echo "Allowed tools: $ROLE_TOOLS (documentation only)"
+    echo "Disallowed tools: ${ROLE_DISALLOWED_TOOLS:-(none — full access)}"
     echo "Timeout: ${TIMEOUT}s"
     echo ""
     echo "=== PROMPT PREVIEW ==="
@@ -532,7 +565,7 @@ main() {
 
   log_info "Dispatching: role=$ROLE target=$TARGET"
   log_info "Task: $TASK"
-  log_info "Tools: $ROLE_TOOLS | Timeout: ${TIMEOUT}s"
+  log_info "Disallowed tools: ${ROLE_DISALLOWED_TOOLS:-(none)} | Timeout: ${TIMEOUT}s"
 
   # Log file for this run
   local run_id
@@ -545,7 +578,7 @@ main() {
 
   local result
   local ec=0
-  result=$(invoke_agent "$ROLE_PROMPT" "$ROLE_TOOLS" "$TASK" "$target_path" "$TIMEOUT") || ec=$?
+  result=$(invoke_agent "$ROLE_PROMPT" "$ROLE_DISALLOWED_TOOLS" "$TASK" "$target_path" "$TIMEOUT") || ec=$?
 
   local end_time duration
   end_time=$(epoch_now)
@@ -554,8 +587,8 @@ main() {
   # Save full output
   echo "$result" > "$run_log"
 
-  # Record invocation
-  record_invocation "$ROLE" "$TARGET" "$duration" "$ec"
+  # Record invocation (includes token usage from parse_claude_output globals)
+  record_invocation "$ROLE" "$TARGET" "$duration" "$ec" "$LAST_INPUT_TOKENS" "$LAST_OUTPUT_TOKENS"
 
   if [[ $ec -ne 0 ]]; then
     log_error "Agent failed (exit $ec) after ${duration}s. Log: $run_log"

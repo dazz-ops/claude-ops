@@ -1,5 +1,6 @@
 ---
 tools: Read,Grep,Glob,Bash
+disallowedTools: Write,Edit,NotebookEdit
 mode: read-only
 skills: fresh-eyes-review, review-protocol
 ---

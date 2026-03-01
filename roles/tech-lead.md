@@ -1,5 +1,6 @@
 ---
 tools: Read,Grep,Glob,Bash
+disallowedTools: Write,Edit,NotebookEdit
 mode: read-only
 skills: explore, review-plan, review-protocol, deepen-plan
 ---

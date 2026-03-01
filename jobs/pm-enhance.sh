@@ -6,6 +6,20 @@ set -euo pipefail
 # Cron: 0 10 * * * /Users/austin/Git_Repos/claude-ops/jobs/pm-enhance.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LOG_DIR="${SCRIPT_DIR}/logs"
+mkdir -p "$LOG_DIR"
+TARGET_PATH=$(jq -r '.targets[] | select(.name == "claude-agent-protocol") | .path' "${SCRIPT_DIR}/config.json")
+
+# Polling guard: skip if no needs_refinement issues exist
+if [[ -n "$TARGET_PATH" ]] && [[ -d "$TARGET_PATH" ]]; then
+  REFINEMENT_COUNT=$(cd "$TARGET_PATH" && gh issue list --label needs_refinement --state open --json number --jq length 2>/dev/null) || REFINEMENT_COUNT=""
+  if [[ -z "$REFINEMENT_COUNT" ]]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] pm-enhance: WARNING — could not determine issue count (gh failed), proceeding." >> "${LOG_DIR}/cron.log"
+  elif [[ "$REFINEMENT_COUNT" == "0" ]]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] pm-enhance: No needs_refinement issues, skipping." >> "${LOG_DIR}/cron.log"
+    exit 0
+  fi
+fi
 
 "${SCRIPT_DIR}/scripts/dispatch.sh" \
   --role product-manager \

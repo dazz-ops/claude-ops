@@ -6,6 +6,20 @@ set -euo pipefail
 # Cron: 0 15 * * 5 /path/to/claude-ops/jobs/tech-lead-review.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LOG_DIR="${SCRIPT_DIR}/logs"
+mkdir -p "$LOG_DIR"
+TARGET_PATH=$(jq -r '.targets[] | select(.name == "claude-agent-protocol") | .path' "${SCRIPT_DIR}/config.json")
+
+# Polling guard: skip if no commits in the last 7 days
+if [[ -n "$TARGET_PATH" ]] && [[ -d "$TARGET_PATH" ]]; then
+  COMMIT_COUNT=$(cd "$TARGET_PATH" && git log --oneline --since='7 days ago' 2>/dev/null | wc -l | tr -d ' ') || COMMIT_COUNT=""
+  if [[ -z "$COMMIT_COUNT" ]]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] tech-lead-review: WARNING — could not determine commit count (git failed), proceeding." >> "${LOG_DIR}/cron.log"
+  elif [[ "$COMMIT_COUNT" == "0" ]]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] tech-lead-review: No commits in last 7 days, skipping." >> "${LOG_DIR}/cron.log"
+    exit 0
+  fi
+fi
 
 "${SCRIPT_DIR}/scripts/dispatch.sh" \
   --role tech-lead \

@@ -1,5 +1,6 @@
 ---
 tools: Read,Write,Edit,Grep,Glob,Bash
+disallowedTools:
 mode: read-write
 skills: start-issue, implement, generate-tests, run-validation, recovery, refactor, commit-and-pr
 ---

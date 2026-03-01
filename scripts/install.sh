@@ -277,20 +277,14 @@ PATH=${cron_path}
 # PM: Enhance — flesh out needs_refinement issues with acceptance criteria
 0 10 * * *   ${jobs_dir}/pm-enhance.sh >> ${log_file} 2>&1
 
-# Developer: Implement next ready_for_dev issue
+# Developer: Implement → self-review → fix → create PR
 0 11 * * *   ${jobs_dir}/dev-implement.sh >> ${log_file} 2>&1
-
-# QA: Review open PRs with fresh-eyes methodology
-0 14 * * *   ${jobs_dir}/qa-review-prs.sh >> ${log_file} 2>&1
-
-# Developer: Fix PRs that have QA findings
-0 16 * * *   ${jobs_dir}/dev-fix-pr.sh >> ${log_file} 2>&1
 
 # ============================================================================
 # Weekly Jobs
 # ============================================================================
 
-# PM: Explore codebase for improvement opportunities (Monday)
+# PM: Explore codebase + ideate new features (Monday)
 0 8 * * 1    ${jobs_dir}/pm-explore.sh >> ${log_file} 2>&1
 
 # Tech Lead: Architecture review (Friday)
@@ -374,18 +368,15 @@ print_summary() {
   printf "  %-20s %-12s %s\n" "Role" "Mode" "Key Permissions"
   printf "  %-20s %-12s %s\n" "----" "----" "---------------"
   printf "  %-20s %-12s %s\n" "product-manager" "read-only" "gh issue create/edit, git log (no code changes)"
-  printf "  %-20s %-12s %s\n" "developer" "read-write" "git commit/push, gh pr create (no merge, no force push)"
-  printf "  %-20s %-12s %s\n" "qa-engineer" "read-only" "gh pr comment, gh issue create, run tests (no code changes)"
-  printf "  %-20s %-12s %s\n" "tech-lead" "read-only" "gh pr/issue comment, git log (no code changes)"
+  printf "  %-20s %-12s %s\n" "developer" "read-write" "git commit/push, gh pr create, /fresh-eyes-review (no merge)"
+  printf "  %-20s %-12s %s\n" "tech-lead" "read-only" "gh issue create/comment, git log (no code changes)"
 
   printf "\n"
   info "Daily schedule:"
   printf "  09:00  PM triage — categorize and prioritize issues\n"
   printf "  10:00  PM enhance — flesh out needs_refinement issues\n"
-  printf "  11:00  Developer — implement next ready_for_dev issue\n"
-  printf "  14:00  QA — review open PRs\n"
-  printf "  16:00  Developer — fix PRs with QA findings\n"
-  printf "  Weekly: PM explore (Mon 08:00), Tech Lead review (Fri 15:00)\n"
+  printf "  11:00  Developer — implement, self-review, fix, create PR\n"
+  printf "  Weekly: PM explore/ideate (Mon 08:00), Tech Lead review (Fri 15:00)\n"
 
   printf "\n"
   info "Next steps:"

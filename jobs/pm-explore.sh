@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# PM Weekly Exploration — discover improvement opportunities
-# Schedule: Monday at 8:00 AM (before daily triage)
-# Cron: 0 8 * * 1 /path/to/claude-ops/jobs/pm-explore.sh
+# PM Weekly Exploration & Ideation
+# Schedule: Monday at 8:00 AM
+# Cron: 0 8 * * 1
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -11,14 +11,24 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   --role product-manager \
   --target claude-agent-protocol \
   --timeout 900 \
-  --task "Weekly exploration: Discover improvement opportunities in the codebase.
-1. Run /explore to understand current state of the project.
-2. Review recent commits (last 7 days) for patterns, gaps, and quality trends.
-3. Check docs/plans/ for any stalled or incomplete plans.
-4. Check docs/solutions/ for recurring problem patterns that suggest deeper issues.
-5. If you identify 2-3 high-value improvements, file them as GitHub issues:
-   - Use 'feature' or 'bug' label as appropriate.
-   - Add 'needs_refinement' label (the PM enhance job will flesh them out).
-   - Add a priority label.
-6. Focus on: developer experience, missing tests, documentation gaps, or workflow friction.
-7. Do NOT file issues that duplicate existing open issues — check first."
+  --task "Weekly exploration and ideation. Two parts: internal review and forward-looking ideas.
+
+PART 1 — Internal review:
+  a. Run /explore to understand current project state.
+  b. Review commits from the last 7 days — what shipped, what's in progress.
+  c. Check docs/plans/ for stalled work. Check docs/solutions/ for recurring problems.
+  d. File issues for any gaps found (missing tests, stale docs, broken workflows).
+
+PART 2 — Ideation and research:
+  a. Based on what this project does and where it's heading, brainstorm 2-3 ideas for:
+     - Features that would make this more useful to end users
+     - Developer experience improvements
+     - Integrations or automations that don't exist yet
+     - Problems users likely hit that aren't addressed
+  b. For each idea, file a GitHub issue:
+     - Use 'feature' label
+     - Add 'needs_refinement' and a priority label
+     - Include: the problem it solves, who benefits, rough scope (small/medium/large)
+     - Frame in terms of user value, not implementation details
+  c. Do NOT file ideas that duplicate existing open issues — check first.
+  d. Do NOT propose architecture or implementation plans — that's the Tech Lead's job."

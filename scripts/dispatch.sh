@@ -10,7 +10,7 @@ set -euo pipefail
 # Usage:
 #   ./scripts/dispatch.sh --role product-manager --target claude-agent-protocol --task "triage issues"
 #   ./scripts/dispatch.sh --role developer --target claude-agent-protocol --task "implement issue #12"
-#   ./scripts/dispatch.sh --role qa-engineer --target claude-agent-protocol --task "review open PRs"
+#   ./scripts/dispatch.sh --role code-reviewer --target claude-agent-protocol --task "review open PRs"
 #
 # Called by job scripts in jobs/. Not typically invoked directly.
 # ============================================================================
@@ -514,7 +514,7 @@ main() {
   fi
 
   # Lock — only read-write roles need exclusive access.
-  # Read-only roles (PM, QA, Tech Lead) can run concurrently.
+  # Read-only roles (PM, Code Reviewer, Tech Lead) can run concurrently.
   if [[ "$ROLE_MODE" == "read-write" ]]; then
     acquire_target_lock "$TARGET" || exit 1
     trap 'release_target_lock "$TARGET"' EXIT

@@ -277,8 +277,15 @@ PATH=${cron_path}
 # PM: Enhance — flesh out needs_refinement issues with acceptance criteria
 0 10 * * *   ${jobs_dir}/pm-enhance.sh >> ${log_file} 2>&1
 
-# Developer: Implement → self-review → fix → create PR
+# Developer: Implement — 3 slots per day for throughput
 0 11 * * *   ${jobs_dir}/dev-implement.sh >> ${log_file} 2>&1
+0 15 * * *   ${jobs_dir}/dev-implement.sh >> ${log_file} 2>&1
+0 19 * * *   ${jobs_dir}/dev-implement.sh >> ${log_file} 2>&1
+
+# Code Reviewer: Fresh-eyes review open PRs — 2h after each dev slot
+0 13 * * *   ${jobs_dir}/dev-review-prs.sh >> ${log_file} 2>&1
+0 17 * * *   ${jobs_dir}/dev-review-prs.sh >> ${log_file} 2>&1
+0 21 * * *   ${jobs_dir}/dev-review-prs.sh >> ${log_file} 2>&1
 
 # ============================================================================
 # Weekly Jobs
@@ -369,13 +376,19 @@ print_summary() {
   printf "  %-20s %-12s %s\n" "----" "----" "---------------"
   printf "  %-20s %-12s %s\n" "product-manager" "read-only" "gh issue create/edit, git log (no code changes)"
   printf "  %-20s %-12s %s\n" "developer" "read-write" "git commit/push, gh pr create, /fresh-eyes-review (no merge)"
+  printf "  %-20s %-12s %s\n" "code-reviewer" "read-only" "gh pr review/comment, git checkout PRs, /fresh-eyes-review"
   printf "  %-20s %-12s %s\n" "tech-lead" "read-only" "gh issue create/comment, git log (no code changes)"
 
   printf "\n"
   info "Daily schedule:"
   printf "  09:00  PM triage — categorize and prioritize issues\n"
   printf "  10:00  PM enhance — flesh out needs_refinement issues\n"
-  printf "  11:00  Developer — implement, self-review, fix, create PR\n"
+  printf "  11:00  Developer — implement, self-review, create PR (slot 1/3)\n"
+  printf "  13:00  Code Reviewer — fresh-eyes review open PRs (slot 1/3)\n"
+  printf "  15:00  Developer — implement (slot 2/3)\n"
+  printf "  17:00  Code Reviewer — review PRs (slot 2/3)\n"
+  printf "  19:00  Developer — implement (slot 3/3)\n"
+  printf "  21:00  Code Reviewer — review PRs (slot 3/3)\n"
   printf "  Weekly: PM explore/ideate (Mon 08:00), Tech Lead review (Fri 15:00)\n"
 
   printf "\n"

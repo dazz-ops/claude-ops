@@ -2,8 +2,11 @@
 set -euo pipefail
 
 # Developer: Implement, review, fix, and PR
-# Schedule: Daily at 11:00 AM (after PM triage + enhance)
-# Cron: 0 11 * * *
+# Schedule: 3x daily (after PM triage + enhance, and afternoon/evening)
+# Cron: 0 11,15,19 * * *
+#
+# Each run picks ONE issue and creates a PR. Runs 3x/day for throughput.
+# The schedule spaces runs so the lock is released between each.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 

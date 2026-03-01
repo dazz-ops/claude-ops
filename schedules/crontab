@@ -19,18 +19,28 @@ PATH=/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin
 # PM: Morning triage — review and label open issues
 0 9 * * *    /Users/austin/Git_Repos/claude-ops/jobs/pm-triage.sh >> /Users/austin/Git_Repos/claude-ops/logs/cron.log 2>&1
 
-# Developer: Implement next ready issue (after PM triage)
-0 11 * * *   /Users/austin/Git_Repos/claude-ops/jobs/dev-implement.sh >> /Users/austin/Git_Repos/claude-ops/logs/cron.log 2>&1
+# PM: Enhance needs_refinement issues (after triage)
+0 10 * * *   /Users/austin/Git_Repos/claude-ops/jobs/pm-enhance.sh >> /Users/austin/Git_Repos/claude-ops/logs/cron.log 2>&1
 
-# QA: Review open PRs (after dev has had time to work)
-0 14 * * *   /Users/austin/Git_Repos/claude-ops/jobs/qa-review-prs.sh >> /Users/austin/Git_Repos/claude-ops/logs/cron.log 2>&1
+# Developer: Implement — 3 slots per day for throughput
+0 11 * * *   /Users/austin/Git_Repos/claude-ops/jobs/dev-implement.sh >> /Users/austin/Git_Repos/claude-ops/logs/cron.log 2>&1
+0 15 * * *   /Users/austin/Git_Repos/claude-ops/jobs/dev-implement.sh >> /Users/austin/Git_Repos/claude-ops/logs/cron.log 2>&1
+0 19 * * *   /Users/austin/Git_Repos/claude-ops/jobs/dev-implement.sh >> /Users/austin/Git_Repos/claude-ops/logs/cron.log 2>&1
+
+# Code Reviewer: Fresh-eyes review open PRs — 2h after each dev slot
+0 13 * * *   /Users/austin/Git_Repos/claude-ops/jobs/dev-review-prs.sh >> /Users/austin/Git_Repos/claude-ops/logs/cron.log 2>&1
+0 17 * * *   /Users/austin/Git_Repos/claude-ops/jobs/dev-review-prs.sh >> /Users/austin/Git_Repos/claude-ops/logs/cron.log 2>&1
+0 21 * * *   /Users/austin/Git_Repos/claude-ops/jobs/dev-review-prs.sh >> /Users/austin/Git_Repos/claude-ops/logs/cron.log 2>&1
 
 # ============================================================================
 # Weekly Jobs
 # ============================================================================
 
-# PM: Explore codebase for improvement opportunities (Monday morning)
-0 10 * * 1   /Users/austin/Git_Repos/claude-ops/jobs/pm-explore.sh >> /Users/austin/Git_Repos/claude-ops/logs/cron.log 2>&1
+# PM: Explore codebase + ideate new features (Monday morning)
+0 8 * * 1    /Users/austin/Git_Repos/claude-ops/jobs/pm-explore.sh >> /Users/austin/Git_Repos/claude-ops/logs/cron.log 2>&1
 
 # Tech Lead: Architecture review (Friday afternoon)
 0 15 * * 5   /Users/austin/Git_Repos/claude-ops/jobs/tech-lead-review.sh >> /Users/austin/Git_Repos/claude-ops/logs/cron.log 2>&1
+
+# Log cleanup (Sunday)
+0 3 * * 0    /Users/austin/Git_Repos/claude-ops/scripts/log-cleanup.sh >> /Users/austin/Git_Repos/claude-ops/logs/cron.log 2>&1

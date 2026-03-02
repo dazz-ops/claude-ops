@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # PM Morning Triage — categorize and prioritize only
-# Schedule: Daily at 9:00 AM
-# Cron: 0 9 * * * /Users/austin/Git_Repos/claude-ops/jobs/pm-triage.sh
+# Schedule: Daily at 09:00
+# Cron: 0 9 * * *
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG_DIR="${SCRIPT_DIR}/logs"
@@ -11,6 +11,7 @@ mkdir -p "$LOG_DIR"
 TARGET_PATH=$(jq -r '.targets[] | select(.name == "claude-agent-protocol") | .path' "${SCRIPT_DIR}/config.json")
 
 # Polling guard: skip if no open issues exist
+# Note: TARGET_PATH is validated by -n and -d checks before use
 if [[ -n "$TARGET_PATH" ]] && [[ -d "$TARGET_PATH" ]]; then
   OPEN_COUNT=$(cd "$TARGET_PATH" && gh issue list --state open --json number --jq length 2>/dev/null) || OPEN_COUNT=""
   if [[ -z "$OPEN_COUNT" ]]; then

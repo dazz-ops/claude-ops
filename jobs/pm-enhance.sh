@@ -3,7 +3,7 @@ set -euo pipefail
 
 # PM Issue Enhancement — flesh out needs_refinement issues
 # Schedule: Daily at 10:00 AM (after triage)
-# Cron: 0 10 * * * /Users/austin/Git_Repos/claude-ops/jobs/pm-enhance.sh
+# Cron: 0 10 * * *
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG_DIR="${SCRIPT_DIR}/logs"

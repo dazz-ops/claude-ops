@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # Tech Lead: Weekly architecture review
-# Schedule: Friday at 3:00 PM
-# Cron: 0 15 * * 5 /path/to/claude-ops/jobs/tech-lead-review.sh
+# Schedule: Friday at 15:00
+# Cron: 0 15 * * 5
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG_DIR="${SCRIPT_DIR}/logs"

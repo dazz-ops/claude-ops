@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Code Reviewer: Fresh-eyes review on all open PRs
-# Schedule: Runs 2 hours after each dev-implement slot
+# Schedule: 3x daily at 13:00, 17:00, 21:00 (2h after each dev slot)
 # Cron: 0 13,17,21 * * *
 #
 # This is a SECOND review pass — independent from the Developer's self-review.

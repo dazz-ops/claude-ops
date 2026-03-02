@@ -2,9 +2,9 @@
   "targets": [],
   "defaults": {
     "worker_timeout": 600,
-    "max_invocations_per_job": 3,
     "max_daily_invocations": 30,
-    "log_retention_days": 7
+    "log_retention_days": 7,
+    "cron_enabled": true
   },
   "notifications": {
     "enabled": false,

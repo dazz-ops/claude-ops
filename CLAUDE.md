@@ -83,15 +83,21 @@ Jobs fire within minutes of the triggering event. No fixed schedule — reacts i
 
 ### Fallback: Cron (Catch-Up)
 
+<!-- SYNC: this schedule must match install.sh generate_crontab() -->
+
 Reduced frequency. Catches work missed by events (offline runner, API-created issues).
 
 ```
-08:00 Mon  PM Explore/Ideate    — discover gaps, brainstorm features, file issues
 09:00      PM Triage             — catch issues without events (email/API-created)
+10:00      PM Enhance            — flesh out needs_refinement issues
+11:00      Developer (slot 1/3)  — implement ready_for_dev issues
+13:00      Code Reviewer (1/3)   — fresh-eyes review open PRs
+15:00      Developer (slot 2/3)  — implement
+17:00      Code Reviewer (2/3)   — review PRs
+19:00      Developer (slot 3/3)  — implement
+21:00      Code Reviewer (3/3)   — review PRs
+08:00 Mon  PM Explore/Ideate    — discover gaps, brainstorm features, file issues
 15:00 Fri  Tech Lead             — weekly architecture review
-22:00      PM Enhance            — evening catch-up for missed labels
-22:05      Developer             — evening catch-up for missed labels
-22:10      Code Reviewer         — evening catch-up for missed PRs
 03:00 Sun  Log Cleanup
 ```
 

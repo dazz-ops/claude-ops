@@ -4,8 +4,8 @@ set -euo pipefail
 # ============================================================================
 # log-cleanup.sh — Remove old logs and budget files
 #
-# Schedule: Weekly (Sunday midnight)
-# Cron: 0 0 * * 0 /Users/austin/Git_Repos/claude-ops/scripts/log-cleanup.sh
+# Schedule: Weekly (Sunday 03:00)
+# Cron: 0 3 * * 0
 # ============================================================================
 
 OPS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

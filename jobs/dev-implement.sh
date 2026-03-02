@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Developer: Implement, review, fix, and PR
-# Schedule: 3x daily (after PM triage + enhance, and afternoon/evening)
+# Developer: Implement, self-review, fix, and PR
+# Schedule: 3x daily at 11:00, 15:00, 19:00
 # Cron: 0 11,15,19 * * *
 #
 # Each run picks ONE issue and creates a PR. Runs 3x/day for throughput.

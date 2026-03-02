@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Mock gh CLI — records calls, returns canned output
+# Set MOCK_GH_OUTPUT to control response, MOCK_GH_EXIT to control exit code
+
+MOCK_DIR="${MOCK_GH_DIR:-/tmp/mock-gh}"
+mkdir -p "$MOCK_DIR"
+
+# Record the call
+echo "$@" >> "${MOCK_DIR}/calls.log"
+
+exit_code="${MOCK_GH_EXIT:-0}"
+
+if [[ -n "${MOCK_GH_OUTPUT:-}" ]]; then
+  echo "$MOCK_GH_OUTPUT"
+fi
+
+exit "$exit_code"

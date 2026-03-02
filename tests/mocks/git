@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Mock git — passes through to real git for safe operations,
+# records calls for verification.
+# Set MOCK_GIT_EXIT to force exit code, MOCK_GIT_OUTPUT to force output
+
+MOCK_DIR="${MOCK_GIT_DIR:-/tmp/mock-git}"
+mkdir -p "$MOCK_DIR"
+
+# Record the call
+echo "$@" >> "${MOCK_DIR}/calls.log"
+
+if [[ -n "${MOCK_GIT_OUTPUT:-}" ]]; then
+  echo "$MOCK_GIT_OUTPUT"
+  exit "${MOCK_GIT_EXIT:-0}"
+fi
+
+if [[ -n "${MOCK_GIT_EXIT:-}" ]]; then
+  exit "$MOCK_GIT_EXIT"
+fi
+
+# Default: return empty (safe for status --porcelain checks)
+exit 0

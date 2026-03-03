@@ -8,28 +8,24 @@ set -euo pipefail
 # This is a SECOND review pass — independent from the Developer's self-review.
 # The implementing Developer already ran /fresh-eyes-review before creating
 # the PR. This reviewer catches anything the first pass missed.
+#
+# Usage:
+#   dev-review-prs.sh              # loops all enabled targets (cron mode)
+#   dev-review-prs.sh my-project   # runs for one target only (Actions/manual)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LOG_DIR="${SCRIPT_DIR}/logs"
-mkdir -p "$LOG_DIR"
-TARGET_PATH=$(jq -r '.targets[] | select(.name == "claude-agent-protocol") | .path' "${SCRIPT_DIR}/config.json")
+source "${SCRIPT_DIR}/scripts/lib.sh"
+export GUARD_JOB_NAME="dev-review-prs"
 
-# Polling guard: skip if no open PRs exist
-if [[ -n "$TARGET_PATH" ]] && [[ -d "$TARGET_PATH" ]]; then
-  PR_COUNT=$(cd "$TARGET_PATH" && gh pr list --state open --json number --jq length 2>/dev/null) || PR_COUNT=""
-  if [[ -z "$PR_COUNT" ]]; then
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] dev-review-prs: WARNING — could not determine PR count (gh failed), proceeding." >> "${LOG_DIR}/cron.log"
-  elif [[ "$PR_COUNT" == "0" ]]; then
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] dev-review-prs: No open PRs, skipping." >> "${LOG_DIR}/cron.log"
-    exit 0
-  fi
-fi
+review_target() {
+  local target="$1"
+  guard_open_prs "$target" || return 0
 
-"${SCRIPT_DIR}/scripts/dispatch.sh" \
-  --role code-reviewer \
-  --target claude-agent-protocol \
-  --timeout 1800 \
-  --task "Review all open PRs that haven't been reviewed yet. Follow these steps exactly.
+  "${SCRIPT_DIR}/scripts/dispatch.sh" \
+    --role code-reviewer \
+    --target "$target" \
+    --timeout 1800 \
+    --task "Review all open PRs that haven't been reviewed yet. Follow these steps exactly.
 
 STEP 0 — Identify PRs to review:
   Run: gh pr list --state open --json number,title,headRefName,author,createdAt,labels --limit 20
@@ -60,3 +56,6 @@ STEP 1 — For each unreviewed PR (process ALL of them):
 
 STEP 2 — Summarize:
   List each PR reviewed, the verdict, and number of findings."
+}
+
+run_for_targets review_target "${1:-}"

@@ -4,14 +4,23 @@ set -euo pipefail
 # PM Weekly Exploration & Ideation
 # Schedule: Monday at 8:00 AM
 # Cron: 0 8 * * 1
+#
+# Usage:
+#   pm-explore.sh              # loops all enabled targets (cron mode)
+#   pm-explore.sh my-project   # runs for one target only (Actions/manual)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${SCRIPT_DIR}/scripts/lib.sh"
+export GUARD_JOB_NAME="pm-explore"
 
-"${SCRIPT_DIR}/scripts/dispatch.sh" \
-  --role product-manager \
-  --target claude-agent-protocol \
-  --timeout 900 \
-  --task "Weekly exploration and ideation. Two parts: internal review and forward-looking ideas.
+explore_target() {
+  local target="$1"
+
+  "${SCRIPT_DIR}/scripts/dispatch.sh" \
+    --role product-manager \
+    --target "$target" \
+    --timeout 900 \
+    --task "Weekly exploration and ideation. Two parts: internal review and forward-looking ideas.
 
 PART 1 — Internal review:
   a. Run /explore to understand current project state.
@@ -32,3 +41,6 @@ PART 2 — Ideation and research:
      - Frame in terms of user value, not implementation details
   c. Do NOT file ideas that duplicate existing open issues — check first.
   d. Do NOT propose architecture or implementation plans — that's the Tech Lead's job."
+}
+
+run_for_targets explore_target "${1:-}"

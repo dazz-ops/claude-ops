@@ -36,8 +36,10 @@ claude-ops/
 ├── scripts/
 │   ├── install.sh              # Setup: deps, auth, config, crontab
 │   ├── dispatch.sh             # Core dispatcher: loads role, invokes claude -p
+│   ├── lib.sh                  # Shared helpers: target enumeration, polling guards
 │   ├── status.sh               # Dashboard
 │   └── log-cleanup.sh          # Weekly cleanup
+├── workflows/                  # GitHub Actions workflow templates (copy to target repos)
 ├── docs/plans/                 # Planning documents
 ├── docs/solutions/             # Captured learnings
 ├── state/                      # Runtime (gitignored)
@@ -48,9 +50,9 @@ claude-ops/
 
 ```
 GitHub Event (issue opened, PR created, label added)
-  → GitHub Actions workflow fires (in claude-agent-protocol repo)
+  → GitHub Actions workflow fires (in target repo, from workflows/ templates)
   → Runs on self-hosted runner (Mac Mini)
-  → Calls existing jobs/*.sh script
+  → Calls dispatch.sh with target name + event context
   → dispatch.sh handles everything: role, locking, budget, claude -p, logging
 
 Cron (fallback — daily 22:00 for most jobs)

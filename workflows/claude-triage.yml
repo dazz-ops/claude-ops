@@ -1,0 +1,41 @@
+# claude-triage.yml — Triage newly opened issues
+#
+# Copy this file to your target repo's .github/workflows/ directory.
+#
+# Required repository variables (Settings > Secrets and variables > Variables):
+#   CLAUDE_OPS_HOME  — absolute path to claude-ops on the self-hosted runner
+#   TARGET_NAME      — matches config.json targets[].name
+
+name: Claude Triage
+
+on:
+  issues:
+    types: [opened]
+
+concurrency:
+  group: claude-ops-${{ vars.TARGET_NAME }}-triage
+  cancel-in-progress: false
+
+jobs:
+  triage:
+    runs-on: self-hosted
+    steps:
+      - name: Validate claude-ops path
+        run: |
+          if [[ ! -d "$CLAUDE_OPS_HOME" ]] || [[ ! -f "$CLAUDE_OPS_HOME/config.json" ]]; then
+            echo "::error::CLAUDE_OPS_HOME is not set or invalid: $CLAUDE_OPS_HOME"
+            exit 1
+          fi
+        env:
+          CLAUDE_OPS_HOME: ${{ vars.CLAUDE_OPS_HOME }}
+
+      - name: Triage issue #${{ github.event.issue.number }}
+        run: |
+          "$CLAUDE_OPS_HOME/scripts/dispatch.sh" \
+            --role product-manager \
+            --target "$TARGET_NAME" \
+            --task "Triage issue #${ISSUE_NUMBER}: Read the issue, categorize (bug/feature), prioritize (priority:high/medium/low), and mark ready_for_dev or needs_refinement."
+        env:
+          CLAUDE_OPS_HOME: ${{ vars.CLAUDE_OPS_HOME }}
+          TARGET_NAME: ${{ vars.TARGET_NAME }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}

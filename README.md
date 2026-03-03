@@ -60,7 +60,8 @@ claude-ops/
 ├── config.template.json     # Template for config.json (committed)
 ├── roles/                   # Agent persona definitions (prompt + tool restrictions)
 ├── jobs/                    # Job scripts (called by Actions and cron)
-├── scripts/                 # Core tooling: dispatcher, installer, status
+├── scripts/                 # Core tooling: dispatcher, installer, status, shared lib
+├── workflows/               # GitHub Actions workflow templates (copy to target repos)
 ├── schedules/               # Generated crontab (from install.sh)
 ├── tests/                   # Bats test suite
 ├── docs/                    # Plans and solution docs
@@ -71,8 +72,9 @@ claude-ops/
 | Directory | Purpose |
 |-----------|---------|
 | `roles/` | One Markdown file per role. YAML frontmatter defines tool access and mode. Body is the system prompt. |
-| `jobs/` | Thin shell scripts that call `dispatch.sh` with a role, target, and task description. Include polling guards to skip when there's no work. |
-| `scripts/` | `dispatch.sh` (core dispatcher), `install.sh` (setup), `status.sh` (dashboard), `log-cleanup.sh` (rotation). |
+| `jobs/` | Thin shell scripts that call `dispatch.sh` with a role, target, and task description. Include polling guards to skip when there's no work. Support multi-target: no args loops all enabled targets, `$1` runs one target. |
+| `scripts/` | `dispatch.sh` (core dispatcher), `lib.sh` (shared helpers for target enumeration and polling guards), `install.sh` (setup), `status.sh` (dashboard), `log-cleanup.sh` (rotation). |
+| `workflows/` | GitHub Actions workflow templates. Copy to each target repo's `.github/workflows/` directory. |
 | `docs/plans/` | Planning documents for in-progress features. |
 | `docs/solutions/` | Captured learnings from solved problems (searchable knowledge base). |
 
@@ -324,48 +326,46 @@ Add the repo to `config.json`:
 }
 ```
 
+> **Budget note:** `max_daily_invocations` is shared across all targets. If you add multiple targets, consider increasing the cap proportionally (e.g., 30 per target).
+
 ### 2. Set up GitHub Actions in the target repo
 
-Create workflow files in the target repo's `.github/workflows/` directory. Each workflow should:
+Copy the workflow templates from `workflows/` to the target repo's `.github/workflows/` directory:
 
-1. Trigger on the relevant GitHub event
-2. Run on your self-hosted runner
-3. Call the corresponding job script in claude-ops
-
-Example workflow (`.github/workflows/claude-triage.yml`):
-
-```yaml
-name: Claude Triage
-on:
-  issues:
-    types: [opened]
-
-jobs:
-  triage:
-    runs-on: self-hosted
-    steps:
-      - name: Triage issue
-        run: ${{ vars.CLAUDE_OPS_HOME }}/jobs/pm-triage.sh
-        env:
-          CLAUDE_OPS_HOME: ${{ vars.CLAUDE_OPS_HOME }}
+```bash
+cp workflows/claude-*.yml /path/to/my-new-repo/.github/workflows/
 ```
 
-Set `CLAUDE_OPS_HOME` as a repository variable pointing to your claude-ops installation path.
+Then set two **repository variables** (Settings > Secrets and variables > Actions > Variables):
 
-### 3. Update job scripts
+| Variable | Value | Example |
+|----------|-------|---------|
+| `CLAUDE_OPS_HOME` | Absolute path to claude-ops on the self-hosted runner | `/Users/me/claude-ops` |
+| `TARGET_NAME` | Matches `config.json` targets[].name | `my-new-repo` |
 
-The job scripts in `jobs/` currently hardcode `claude-agent-protocol` as the target name. To support your repo, either:
+Available workflow templates:
 
-- Edit the job scripts to use your target name, or
-- Use `dispatch.sh` directly from your workflow (more flexible):
+| Template | Trigger | What it does |
+|----------|---------|-------------|
+| `claude-triage.yml` | Issue opened | Triages the specific issue by number |
+| `claude-enhance.yml` | Label `needs_refinement` added | Enhances the specific issue |
+| `claude-implement.yml` | Label `ready_for_dev` added | Implements the specific issue |
+| `claude-review.yml` | PR opened/synchronized | Fresh-eyes reviews the PR (rejects fork PRs) |
+| `claude-tech-review.yml` | Weekly (Friday 15:00) + manual | Architecture review |
+| `claude-dispatch.yml` | Manual (workflow_dispatch) | Any role with custom task |
 
-```yaml
-      - name: Implement
-        run: |
-          ${{ vars.CLAUDE_OPS_HOME }}/scripts/dispatch.sh \
-            --role developer \
-            --target my-new-repo \
-            --task "implement issue #${{ github.event.issue.number }}"
+All templates include path validation, concurrency groups, and security protections. The event-driven workflows call `dispatch.sh` directly with the issue/PR number from the event context.
+
+### 3. Cron fallback (optional)
+
+Job scripts in `jobs/` automatically loop all enabled targets when run without arguments (cron mode). No per-target configuration is needed — just add the target to `config.json` and cron picks it up.
+
+```bash
+# Cron runs:
+jobs/pm-triage.sh              # loops all enabled targets
+
+# Actions/manual runs:
+jobs/pm-triage.sh my-new-repo  # runs for one target only
 ```
 
 ## Testing
@@ -442,8 +442,17 @@ claude-ops/
 ├── scripts/
 │   ├── install.sh              # Setup: deps, auth, config, crontab
 │   ├── dispatch.sh             # Core dispatcher: role loading, locking, budget, claude -p
+│   ├── lib.sh                  # Shared helpers: target enumeration, polling guards
 │   ├── status.sh               # Status dashboard
 │   └── log-cleanup.sh          # Weekly log rotation and cleanup
+│
+├── workflows/                  # GitHub Actions workflow templates (copy to target repos)
+│   ├── claude-triage.yml       # Issue opened → PM triage
+│   ├── claude-enhance.yml      # Label needs_refinement → PM enhance
+│   ├── claude-implement.yml    # Label ready_for_dev → Developer implement
+│   ├── claude-review.yml       # PR opened/synced → Code Reviewer review
+│   ├── claude-tech-review.yml  # Weekly + manual → Tech Lead review
+│   └── claude-dispatch.yml     # Manual dispatch (any role)
 │
 ├── schedules/
 │   └── crontab                 # Generated crontab (install.sh writes this)

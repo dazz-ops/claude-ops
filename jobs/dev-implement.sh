@@ -7,28 +7,24 @@ set -euo pipefail
 #
 # Each run picks ONE issue and creates a PR. Runs 3x/day for throughput.
 # The schedule spaces runs so the lock is released between each.
+#
+# Usage:
+#   dev-implement.sh              # loops all enabled targets (cron mode)
+#   dev-implement.sh my-project   # runs for one target only (Actions/manual)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LOG_DIR="${SCRIPT_DIR}/logs"
-mkdir -p "$LOG_DIR"
-TARGET_PATH=$(jq -r '.targets[] | select(.name == "claude-agent-protocol") | .path' "${SCRIPT_DIR}/config.json")
+source "${SCRIPT_DIR}/scripts/lib.sh"
+export GUARD_JOB_NAME="dev-implement"
 
-# Polling guard: skip if no ready_for_dev issues exist
-if [[ -n "$TARGET_PATH" ]] && [[ -d "$TARGET_PATH" ]]; then
-  READY_COUNT=$(cd "$TARGET_PATH" && gh issue list --label ready_for_dev --state open --json number --jq length 2>/dev/null) || READY_COUNT=""
-  if [[ -z "$READY_COUNT" ]]; then
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] dev-implement: WARNING — could not determine issue count (gh failed), proceeding." >> "${LOG_DIR}/cron.log"
-  elif [[ "$READY_COUNT" == "0" ]]; then
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] dev-implement: No ready_for_dev issues, skipping." >> "${LOG_DIR}/cron.log"
-    exit 0
-  fi
-fi
+implement_target() {
+  local target="$1"
+  guard_labeled_issues "$target" "ready_for_dev" || return 0
 
-"${SCRIPT_DIR}/scripts/dispatch.sh" \
-  --role developer \
-  --target claude-agent-protocol \
-  --timeout 1800 \
-  --task "Implement the next ready issue, review your own work, and create a PR. Follow these steps exactly.
+  "${SCRIPT_DIR}/scripts/dispatch.sh" \
+    --role developer \
+    --target "$target" \
+    --timeout 1800 \
+    --task "Implement the next ready issue, review your own work, and create a PR. Follow these steps exactly.
 
 STEP 0 — Clean start:
   git checkout main && git pull origin main
@@ -63,3 +59,6 @@ STEP 5 — Create PR:
   c. Create PR: gh pr create --title '<title>' --body 'Closes #<number>'
 
 Only implement ONE issue per run."
+}
+
+run_for_targets implement_target "${1:-}"

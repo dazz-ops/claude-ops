@@ -1,0 +1,61 @@
+# claude-tech-review.yml — Weekly architecture review
+#
+# Copy this file to your target repo's .github/workflows/ directory.
+#
+# Required repository variables (Settings > Secrets and variables > Variables):
+#   CLAUDE_OPS_HOME  — absolute path to claude-ops on the self-hosted runner
+#   TARGET_NAME      — matches config.json targets[].name
+
+name: Claude Tech Review
+
+on:
+  schedule:
+    - cron: '0 15 * * 5'  # Friday at 15:00
+  workflow_dispatch:
+
+concurrency:
+  group: claude-ops-${{ vars.TARGET_NAME }}-tech-review
+  cancel-in-progress: false
+
+jobs:
+  review:
+    runs-on: self-hosted
+    steps:
+      - name: Validate claude-ops path
+        run: |
+          if [[ ! -d "$CLAUDE_OPS_HOME" ]] || [[ ! -f "$CLAUDE_OPS_HOME/config.json" ]]; then
+            echo "::error::CLAUDE_OPS_HOME is not set or invalid: $CLAUDE_OPS_HOME"
+            exit 1
+          fi
+        env:
+          CLAUDE_OPS_HOME: ${{ vars.CLAUDE_OPS_HOME }}
+
+      - name: Architecture review
+        run: |
+          "$CLAUDE_OPS_HOME/scripts/dispatch.sh" \
+            --role tech-lead \
+            --target "$TARGET_NAME" \
+            --timeout 1800 \
+            --task "Weekly architecture review. Focus on patterns and structure, NOT line-level code quality.
+
+          STEP 1 — Review the week's changes:
+            Run: git log --oneline --since='7 days ago'
+            Read the diffs of significant commits.
+
+          STEP 2 — Check architectural concerns:
+            a. New dependencies — justified? Lighter alternatives?
+            b. Pattern consistency — naming, structure, imports
+            c. Complexity growth — files over 500 lines, god-objects
+            d. Module boundaries — separation of concerns, circular deps
+            e. Test strategy — consistent approach, coverage gaps
+
+          STEP 3 — Review open plans in docs/plans/
+
+          STEP 4 — Check docs/solutions/ for recurring problems
+
+          STEP 5 — File issues for concerns (label: architecture, tech-debt)
+
+          STEP 6 — Summarize findings and recommendations."
+        env:
+          CLAUDE_OPS_HOME: ${{ vars.CLAUDE_OPS_HOME }}
+          TARGET_NAME: ${{ vars.TARGET_NAME }}

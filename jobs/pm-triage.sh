@@ -4,28 +4,23 @@ set -euo pipefail
 # PM Morning Triage — categorize and prioritize only
 # Schedule: Daily at 09:00
 # Cron: 0 9 * * *
+#
+# Usage:
+#   pm-triage.sh              # loops all enabled targets (cron mode)
+#   pm-triage.sh my-project   # runs for one target only (Actions/manual)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LOG_DIR="${SCRIPT_DIR}/logs"
-mkdir -p "$LOG_DIR"
-TARGET_PATH=$(jq -r '.targets[] | select(.name == "claude-agent-protocol") | .path' "${SCRIPT_DIR}/config.json")
+source "${SCRIPT_DIR}/scripts/lib.sh"
+export GUARD_JOB_NAME="pm-triage"
 
-# Polling guard: skip if no open issues exist
-# Note: TARGET_PATH is validated by -n and -d checks before use
-if [[ -n "$TARGET_PATH" ]] && [[ -d "$TARGET_PATH" ]]; then
-  OPEN_COUNT=$(cd "$TARGET_PATH" && gh issue list --state open --json number --jq length 2>/dev/null) || OPEN_COUNT=""
-  if [[ -z "$OPEN_COUNT" ]]; then
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] pm-triage: WARNING — could not determine issue count (gh failed), proceeding." >> "${LOG_DIR}/cron.log"
-  elif [[ "$OPEN_COUNT" == "0" ]]; then
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] pm-triage: No open issues, skipping." >> "${LOG_DIR}/cron.log"
-    exit 0
-  fi
-fi
+triage_target() {
+  local target="$1"
+  guard_open_issues "$target" || return 0
 
-"${SCRIPT_DIR}/scripts/dispatch.sh" \
-  --role product-manager \
-  --target claude-agent-protocol \
-  --task "Morning triage: Categorize and prioritize open issues. Do NOT enhance or add details — that is a separate job.
+  "${SCRIPT_DIR}/scripts/dispatch.sh" \
+    --role product-manager \
+    --target "$target" \
+    --task "Morning triage: Categorize and prioritize open issues. Do NOT enhance or add details — that is a separate job.
 1. List open issues: gh issue list --state open --json number,title,labels
 2. SKIP issues that already have a priority label (priority:high/medium/low) — they were triaged previously.
 3. For NEW unlabeled issues:
@@ -36,3 +31,6 @@ fi
    e. If it needs more detail (vague description, missing acceptance criteria), add 'needs_refinement'.
 4. Check for stale issues (no activity in 14+ days) — comment asking if still relevant.
 5. Summarize: list issues triaged and labels applied."
+}
+
+run_for_targets triage_target "${1:-}"

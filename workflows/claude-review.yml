@@ -1,0 +1,63 @@
+# claude-review.yml — Fresh-eyes review on PRs
+#
+# Copy this file to your target repo's .github/workflows/ directory.
+#
+# Required repository variables (Settings > Secrets and variables > Variables):
+#   CLAUDE_OPS_HOME  — absolute path to claude-ops on the self-hosted runner
+#   TARGET_NAME      — matches config.json targets[].name
+
+name: Claude Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+concurrency:
+  group: claude-ops-${{ vars.TARGET_NAME }}-review-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Security: reject fork PRs — they can execute arbitrary code on self-hosted runners.
+    # See docs/solutions/github-actions-self-hosted-runner-security-gotchas.md
+    if: github.event.pull_request.head.repo.fork == false
+    runs-on: self-hosted
+    steps:
+      - name: Validate claude-ops path
+        run: |
+          if [[ ! -d "$CLAUDE_OPS_HOME" ]] || [[ ! -f "$CLAUDE_OPS_HOME/config.json" ]]; then
+            echo "::error::CLAUDE_OPS_HOME is not set or invalid: $CLAUDE_OPS_HOME"
+            exit 1
+          fi
+        env:
+          CLAUDE_OPS_HOME: ${{ vars.CLAUDE_OPS_HOME }}
+
+      - name: Review PR #${{ github.event.pull_request.number }}
+        run: |
+          "$CLAUDE_OPS_HOME/scripts/dispatch.sh" \
+            --role code-reviewer \
+            --target "$TARGET_NAME" \
+            --timeout 1800 \
+            --task "Review PR #${PR_NUMBER} (${PR_HEAD_REF}). Follow these steps exactly.
+
+          STEP 1 — Checkout the PR:
+            git fetch origin pull/${PR_NUMBER}/head:pr-${PR_NUMBER}
+            git checkout pr-${PR_NUMBER}
+
+          STEP 2 — Review:
+            a. Stage the diff: git diff main...HEAD > .review/review-diff.txt && git diff main...HEAD --name-only > .review/review-files.txt
+            b. Run /fresh-eyes-review
+
+          STEP 3 — Post results:
+            Based on the verdict:
+            - BLOCK/FIX_BEFORE_COMMIT: gh pr review ${PR_NUMBER} --request-changes --body '<findings>'
+            - APPROVED_WITH_NOTES: gh pr review ${PR_NUMBER} --comment --body '<findings>'
+            - APPROVED: gh pr review ${PR_NUMBER} --approve --body 'Fresh-eyes review passed.'
+
+          STEP 4 — Cleanup:
+            git checkout main && git branch -D pr-${PR_NUMBER}"
+        env:
+          CLAUDE_OPS_HOME: ${{ vars.CLAUDE_OPS_HOME }}
+          TARGET_NAME: ${{ vars.TARGET_NAME }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}

@@ -1,0 +1,43 @@
+# claude-enhance.yml — Enhance issues labeled needs_refinement
+#
+# Copy this file to your target repo's .github/workflows/ directory.
+#
+# Required repository variables (Settings > Secrets and variables > Variables):
+#   CLAUDE_OPS_HOME  — absolute path to claude-ops on the self-hosted runner
+#   TARGET_NAME      — matches config.json targets[].name
+
+name: Claude Enhance
+
+on:
+  issues:
+    types: [labeled]
+
+concurrency:
+  group: claude-ops-${{ vars.TARGET_NAME }}-enhance
+  cancel-in-progress: false
+
+jobs:
+  enhance:
+    if: github.event.label.name == 'needs_refinement'
+    runs-on: self-hosted
+    steps:
+      - name: Validate claude-ops path
+        run: |
+          if [[ ! -d "$CLAUDE_OPS_HOME" ]] || [[ ! -f "$CLAUDE_OPS_HOME/config.json" ]]; then
+            echo "::error::CLAUDE_OPS_HOME is not set or invalid: $CLAUDE_OPS_HOME"
+            exit 1
+          fi
+        env:
+          CLAUDE_OPS_HOME: ${{ vars.CLAUDE_OPS_HOME }}
+
+      - name: Enhance issue #${{ github.event.issue.number }}
+        run: |
+          "$CLAUDE_OPS_HOME/scripts/dispatch.sh" \
+            --role product-manager \
+            --target "$TARGET_NAME" \
+            --timeout 900 \
+            --task "Enhance issue #${ISSUE_NUMBER}: Read the issue, run /explore to understand affected code, add acceptance criteria, affected files, implementation hints, and edge cases. Remove needs_refinement label and add ready_for_dev."
+        env:
+          CLAUDE_OPS_HOME: ${{ vars.CLAUDE_OPS_HOME }}
+          TARGET_NAME: ${{ vars.TARGET_NAME }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}

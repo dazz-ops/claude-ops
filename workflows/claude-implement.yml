@@ -1,0 +1,70 @@
+# claude-implement.yml — Implement issues labeled ready_for_dev
+#
+# Copy this file to your target repo's .github/workflows/ directory.
+#
+# Required repository variables (Settings > Secrets and variables > Variables):
+#   CLAUDE_OPS_HOME  — absolute path to claude-ops on the self-hosted runner
+#   TARGET_NAME      — matches config.json targets[].name
+
+name: Claude Implement
+
+on:
+  issues:
+    types: [labeled]
+
+concurrency:
+  group: claude-ops-${{ vars.TARGET_NAME }}-implement
+  cancel-in-progress: false
+
+jobs:
+  implement:
+    if: github.event.label.name == 'ready_for_dev'
+    runs-on: self-hosted
+    steps:
+      - name: Validate claude-ops path
+        run: |
+          if [[ ! -d "$CLAUDE_OPS_HOME" ]] || [[ ! -f "$CLAUDE_OPS_HOME/config.json" ]]; then
+            echo "::error::CLAUDE_OPS_HOME is not set or invalid: $CLAUDE_OPS_HOME"
+            exit 1
+          fi
+        env:
+          CLAUDE_OPS_HOME: ${{ vars.CLAUDE_OPS_HOME }}
+
+      - name: Implement issue #${{ github.event.issue.number }}
+        run: |
+          "$CLAUDE_OPS_HOME/scripts/dispatch.sh" \
+            --role developer \
+            --target "$TARGET_NAME" \
+            --timeout 1800 \
+            --task "Implement issue #${ISSUE_NUMBER}. Follow these steps exactly.
+
+          STEP 0 — Clean start:
+            git checkout main && git pull origin main
+
+          STEP 1 — Read the issue:
+            Run: gh issue view ${ISSUE_NUMBER}
+
+          STEP 2 — Check for existing PRs:
+            Run: gh pr list --state open --json number,title,body --limit 20
+            If a PR already references issue #${ISSUE_NUMBER}, output 'PR already exists' and stop.
+
+          STEP 3 — Implement:
+            a. Create branch: git checkout -b feat/issue-${ISSUE_NUMBER}-<short-slug>
+            b. Implement the feature or fix
+            c. Write tests for all code changes
+            d. Run tests to verify they pass
+
+          STEP 4 — Self-review:
+            a. Stage your changes: git add the files you changed
+            b. Run /fresh-eyes-review
+            c. Fix ALL findings (CRITICAL, HIGH, and MEDIUM)
+            d. Re-run tests after fixes
+
+          STEP 5 — Create PR:
+            a. Commit with conventional message: feat: <description> (closes #${ISSUE_NUMBER})
+            b. Push: git push -u origin <branch-name>
+            c. Create PR: gh pr create --title '<title>' --body 'Closes #${ISSUE_NUMBER}'"
+        env:
+          CLAUDE_OPS_HOME: ${{ vars.CLAUDE_OPS_HOME }}
+          TARGET_NAME: ${{ vars.TARGET_NAME }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}

@@ -4,28 +4,24 @@ set -euo pipefail
 # Tech Lead: Weekly architecture review
 # Schedule: Friday at 15:00
 # Cron: 0 15 * * 5
+#
+# Usage:
+#   tech-lead-review.sh              # loops all enabled targets (cron mode)
+#   tech-lead-review.sh my-project   # runs for one target only (Actions/manual)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LOG_DIR="${SCRIPT_DIR}/logs"
-mkdir -p "$LOG_DIR"
-TARGET_PATH=$(jq -r '.targets[] | select(.name == "claude-agent-protocol") | .path' "${SCRIPT_DIR}/config.json")
+source "${SCRIPT_DIR}/scripts/lib.sh"
+export GUARD_JOB_NAME="tech-lead-review"
 
-# Polling guard: skip if no commits in the last 7 days
-if [[ -n "$TARGET_PATH" ]] && [[ -d "$TARGET_PATH" ]]; then
-  COMMIT_COUNT=$(cd "$TARGET_PATH" && git log --oneline --since='7 days ago' 2>/dev/null | wc -l | tr -d ' ') || COMMIT_COUNT=""
-  if [[ -z "$COMMIT_COUNT" ]]; then
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] tech-lead-review: WARNING — could not determine commit count (git failed), proceeding." >> "${LOG_DIR}/cron.log"
-  elif [[ "$COMMIT_COUNT" == "0" ]]; then
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] tech-lead-review: No commits in last 7 days, skipping." >> "${LOG_DIR}/cron.log"
-    exit 0
-  fi
-fi
+review_target() {
+  local target="$1"
+  guard_recent_commits "$target" 7 || return 0
 
-"${SCRIPT_DIR}/scripts/dispatch.sh" \
-  --role tech-lead \
-  --target claude-agent-protocol \
-  --timeout 1800 \
-  --task "Weekly architecture review. Focus on patterns and structure, NOT line-level code quality (QA handles that).
+  "${SCRIPT_DIR}/scripts/dispatch.sh" \
+    --role tech-lead \
+    --target "$target" \
+    --timeout 1800 \
+    --task "Weekly architecture review. Focus on patterns and structure, NOT line-level code quality (QA handles that).
 
 STEP 1 — Review the week's changes:
   Run: git log --oneline --since='7 days ago'
@@ -52,3 +48,6 @@ STEP 5 — File issues for concerns:
   Comment on relevant PRs if they have architectural implications.
 
 STEP 6 — Summarize: what's solid, what's concerning, and recommended actions."
+}
+
+run_for_targets review_target "${1:-}"

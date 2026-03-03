@@ -1,0 +1,65 @@
+# claude-dispatch.yml — Manual dispatch (any role)
+#
+# Copy this file to your target repo's .github/workflows/ directory.
+#
+# Required repository variables (Settings > Secrets and variables > Variables):
+#   CLAUDE_OPS_HOME  — absolute path to claude-ops on the self-hosted runner
+#   TARGET_NAME      — matches config.json targets[].name
+
+name: Claude Dispatch
+
+on:
+  workflow_dispatch:
+    inputs:
+      role:
+        description: 'Agent role'
+        required: true
+        type: choice
+        options:
+          - product-manager
+          - developer
+          - code-reviewer
+          - tech-lead
+      task:
+        description: 'Task description for the agent'
+        required: true
+        type: string
+      timeout:
+        description: 'Timeout in seconds (default: from config)'
+        required: false
+        type: string
+        default: ''
+
+concurrency:
+  group: claude-ops-${{ vars.TARGET_NAME }}-dispatch
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    runs-on: self-hosted
+    steps:
+      - name: Validate claude-ops path
+        run: |
+          if [[ ! -d "$CLAUDE_OPS_HOME" ]] || [[ ! -f "$CLAUDE_OPS_HOME/config.json" ]]; then
+            echo "::error::CLAUDE_OPS_HOME is not set or invalid: $CLAUDE_OPS_HOME"
+            exit 1
+          fi
+        env:
+          CLAUDE_OPS_HOME: ${{ vars.CLAUDE_OPS_HOME }}
+
+      - name: Dispatch ${{ inputs.role }}
+        run: |
+          cmd=("$CLAUDE_OPS_HOME/scripts/dispatch.sh"
+            --role "$ROLE"
+            --target "$TARGET_NAME"
+            --task "$TASK")
+          if [[ -n "$TIMEOUT" ]]; then
+            cmd+=(--timeout "$TIMEOUT")
+          fi
+          "${cmd[@]}"
+        env:
+          CLAUDE_OPS_HOME: ${{ vars.CLAUDE_OPS_HOME }}
+          TARGET_NAME: ${{ vars.TARGET_NAME }}
+          ROLE: ${{ inputs.role }}
+          TASK: ${{ inputs.task }}
+          TIMEOUT: ${{ inputs.timeout }}

@@ -14,6 +14,7 @@ Autonomous agent orchestration for software projects. Dispatches Claude Code CLI
 - [Roles](#roles)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
+- [Self-Hosted Runner Setup](#self-hosted-runner-setup)
 - [Configuration](#configuration)
 - [Trigger Architecture](#trigger-architecture)
 - [Usage](#usage)
@@ -113,12 +114,14 @@ git clone <repo-url> && cd claude-ops
 The installer runs these steps interactively:
 
 1. **Dependency check** — verifies all required tools are installed and on PATH
-2. **GitHub auth validation** — confirms `gh` is authenticated with `repo` scope
-3. **Claude CLI validation** — smoke-tests `claude -p` to verify subscription
-4. **Directory setup** — creates `state/` and `logs/`, makes scripts executable
-5. **Config generation** — copies `config.template.json` to `config.json`, prompts to add target repos
-6. **Crontab generation** — writes schedule to `schedules/crontab` with correct paths
-7. **Crontab installation** — optionally installs the schedule (sentinel-based, idempotent)
+2. **Auto-install** — offers to install missing dependencies via Homebrew and npm
+3. **GitHub auth validation** — confirms `gh` is authenticated with `repo` scope
+4. **Claude CLI validation** — smoke-tests `claude -p` to verify subscription
+5. **Directory setup** — creates `state/` and `logs/`, makes scripts executable
+6. **Config generation** — copies `config.template.json` to `config.json`, prompts to add target repos
+7. **Crontab generation** — writes schedule to `schedules/crontab` with correct paths
+8. **Crontab installation** — optionally installs the schedule (sentinel-based, idempotent)
+9. **Runner setup** — offers to download and configure the GitHub Actions self-hosted runner
 
 ### Install flags
 
@@ -127,6 +130,41 @@ The installer runs these steps interactively:
 ./scripts/install.sh --check      # Check dependencies and auth only (no changes)
 ./scripts/install.sh --uninstall  # Remove claude-ops entries from crontab
 ```
+
+## Self-Hosted Runner Setup
+
+The GitHub Actions self-hosted runner must run in a **tmux session** rather than as a launchd service. This is required because the Claude Code CLI accesses OAuth credentials via the macOS login keychain, which is not available to launchd services. See `docs/solutions/launchd-keychain-access.md` for the full analysis.
+
+### Option A: Automatic (via install.sh)
+
+The installer offers to download and configure the runner during `./scripts/install.sh`. It detects your architecture (arm64/x86_64), downloads the correct binary, and runs `config.sh --unattended`.
+
+### Option B: Manual
+
+1. Download the runner from [GitHub Actions Runner Releases](https://github.com/actions/runner/releases)
+2. Extract to `~/actions-runner` (or any directory)
+3. Configure: `./config.sh --url https://github.com/OWNER/REPO --token <token>`
+4. Start via tmux:
+
+```bash
+./scripts/start-runner.sh                    # Default: ~/actions-runner
+./scripts/start-runner.sh /path/to/runner    # Custom directory
+```
+
+### Managing the runner
+
+```bash
+# Start (idempotent — skips if session exists)
+./scripts/start-runner.sh
+
+# View runner output
+tmux attach -t actions-runner
+
+# Stop
+tmux kill-session -t actions-runner
+```
+
+> **Note:** The tmux session does not survive a reboot. Add `./scripts/start-runner.sh` to your login items or shell profile if auto-start is needed.
 
 ## Configuration
 
@@ -405,6 +443,7 @@ Tests use mocks in `tests/mocks/` and fixtures in `tests/fixtures/` to avoid cal
 | Problem | Cause | Fix |
 |---------|-------|-----|
 | `claude: command not found` | Claude Code CLI not installed or not on PATH | `npm install -g @anthropic-ai/claude-code` and ensure it's on your PATH |
+| `Not logged in` (from runner) | Runner is a launchd service (no keychain access) | Run the runner in a tmux session instead: `./scripts/start-runner.sh` |
 | `yq: command not found` | yq not installed | `brew install yq` (must be mikefarah/yq v4+, not the Python wrapper) |
 | `gh: not authenticated` | GitHub CLI not logged in | `gh auth login --scopes repo` |
 | `Daily invocation limit reached` | Budget cap hit (default: 30/day) | Wait for next day, or increase `max_daily_invocations` in config.json |
@@ -440,10 +479,11 @@ claude-ops/
 │   └── tech-lead-review.sh     # Weekly architecture review
 │
 ├── scripts/
-│   ├── install.sh              # Setup: deps, auth, config, crontab
+│   ├── install.sh              # Setup: deps, auth, config, runner, crontab
 │   ├── dispatch.sh             # Core dispatcher: role loading, locking, budget, claude -p
 │   ├── lib.sh                  # Shared helpers: target enumeration, polling guards
 │   ├── status.sh               # Status dashboard
+│   ├── start-runner.sh         # Start GitHub Actions runner in tmux session
 │   └── log-cleanup.sh          # Weekly log rotation and cleanup
 │
 ├── workflows/                  # GitHub Actions workflow templates (copy to target repos)

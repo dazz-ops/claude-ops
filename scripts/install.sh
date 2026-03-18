@@ -31,6 +31,9 @@ header() { printf "\n${BOLD}%s${RESET}\n" "$*"; }
 
 ERRORS=0
 WARNINGS=0
+MISSING_BREW=()       # brew package names for missing required deps
+MISSING_BREW_OPT=()   # brew package names for missing optional deps
+MISSING_NPM=()        # npm packages for missing deps
 
 # ============================================================================
 # Dependency Checks
@@ -40,6 +43,8 @@ check_command() {
   local cmd="$1"
   local purpose="$2"
   local install_hint="${3:-}"
+  local brew_pkg="${4:-}"   # brew package name (empty = not brew-installable)
+  local npm_pkg="${5:-}"    # npm package name (empty = not npm-installable)
 
   if command -v "$cmd" &>/dev/null; then
     local version
@@ -51,6 +56,12 @@ check_command() {
     if [[ -n "$install_hint" ]]; then
       printf "    Install: %s\n" "$install_hint"
     fi
+    if [[ -n "$brew_pkg" ]]; then
+      MISSING_BREW+=("$brew_pkg")
+    fi
+    if [[ -n "$npm_pkg" ]]; then
+      MISSING_NPM+=("$npm_pkg")
+    fi
     ERRORS=$(( ERRORS + 1 ))
     return 1
   fi
@@ -59,12 +70,12 @@ check_command() {
 check_dependencies() {
   header "Checking dependencies"
 
-  check_command "bash" "Shell (script runner)" || true
-  check_command "jq" "JSON parsing (state management)" "brew install jq / apt install jq" || true
-  check_command "git" "Version control" "brew install git / apt install git" || true
-  check_command "claude" "Claude Code CLI (agent runtime)" "npm install -g @anthropic-ai/claude-code" || true
-  check_command "gh" "GitHub CLI (issue/PR operations)" "brew install gh / apt install gh" || true
-  check_command "yq" "YAML parsing (role config frontmatter)" "brew install yq" || true
+  check_command "bash" "Shell (script runner)" "" "" "" || true
+  check_command "jq" "JSON parsing (state management)" "brew install jq / apt install jq" "jq" "" || true
+  check_command "git" "Version control" "brew install git / apt install git" "git" "" || true
+  check_command "claude" "Claude Code CLI (agent runtime)" "npm install -g @anthropic-ai/claude-code" "" "@anthropic-ai/claude-code" || true
+  check_command "gh" "GitHub CLI (issue/PR operations)" "brew install gh / apt install gh" "gh" "" || true
+  check_command "yq" "YAML parsing (role config frontmatter)" "brew install yq" "yq" "" || true
 
   # Verify yq is mikefarah/yq v4+ (not the Python wrapper)
   if command -v yq &>/dev/null; then
@@ -86,8 +97,12 @@ check_dependencies() {
     fi
   fi
 
-  check_command "bats" "Bash test framework (dev/test only)" "brew install bats-core" || {
+  check_command "bats" "Bash test framework (dev/test only)" "brew install bats-core" "bats-core" "" || {
+    # bats is optional — move it from required (MISSING_BREW) to optional (MISSING_BREW_OPT)
+    MISSING_BREW=("${MISSING_BREW[@]/$'bats-core'}")
+    MISSING_BREW_OPT+=("bats-core")
     warn "bats-core is optional (only needed for running tests)"
+    ERRORS=$(( ERRORS - 1 ))  # undo the error increment from check_command
     WARNINGS=$(( WARNINGS + 1 ))
   }
 
@@ -99,6 +114,7 @@ check_dependencies() {
   else
     warn "timeout/gtimeout — not found (will use fallback polling)"
     printf "    Optional: brew install coreutils (for gtimeout)\n"
+    MISSING_BREW_OPT+=("coreutils")
     WARNINGS=$(( WARNINGS + 1 ))
   fi
 
@@ -108,7 +124,122 @@ check_dependencies() {
   else
     warn "terminal-notifier — not found (notifications will use osascript fallback)"
     printf "    Optional: brew install terminal-notifier\n"
+    MISSING_BREW_OPT+=("terminal-notifier")
     WARNINGS=$(( WARNINGS + 1 ))
+  fi
+}
+
+# ============================================================================
+# Auto-Install Missing Dependencies
+# ============================================================================
+
+offer_auto_install() {
+  # Nothing to install
+  if [[ ${#MISSING_BREW[@]} -eq 0 && ${#MISSING_NPM[@]} -eq 0 && ${#MISSING_BREW_OPT[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  local did_install=false
+
+  # Filter out empty entries (from array element removal)
+  local brew_required=()
+  local brew_optional=()
+  for pkg in "${MISSING_BREW[@]}"; do
+    [[ -n "$pkg" ]] && brew_required+=("$pkg")
+  done
+  for pkg in "${MISSING_BREW_OPT[@]}"; do
+    [[ -n "$pkg" ]] && brew_optional+=("$pkg")
+  done
+
+  local has_brew=false
+  if command -v brew &>/dev/null; then
+    has_brew=true
+  fi
+
+  local has_npm=false
+  if command -v npm &>/dev/null; then
+    has_npm=true
+  fi
+
+  # Report what can be auto-installed
+  header "Auto-install missing dependencies"
+
+  if [[ "$has_brew" == "false" && ( ${#brew_required[@]} -gt 0 || ${#brew_optional[@]} -gt 0 ) ]]; then
+    fail "Homebrew not found — cannot auto-install brew packages"
+    info "Install Homebrew first: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+    info "Then re-run: ./scripts/install.sh"
+    if [[ ${#brew_required[@]} -gt 0 ]]; then
+      return 1  # required deps can't be installed without brew
+    fi
+  fi
+
+  # Install required brew packages
+  if [[ "$has_brew" == "true" && ${#brew_required[@]} -gt 0 ]]; then
+    printf "\n"
+    info "Required packages to install via Homebrew: ${brew_required[*]}"
+    read -rp "Install now? (y/n): " do_install
+    if [[ "$do_install" == "y" ]]; then
+      for pkg in "${brew_required[@]}"; do
+        info "Installing $pkg..."
+        if brew install "$pkg" 2>&1; then
+          ok "Installed $pkg"
+          did_install=true
+        else
+          fail "Failed to install $pkg"
+        fi
+      done
+    fi
+  fi
+
+  # Install npm packages
+  if [[ "$has_npm" == "true" && ${#MISSING_NPM[@]} -gt 0 ]]; then
+    printf "\n"
+    info "Required packages to install via npm: ${MISSING_NPM[*]}"
+    read -rp "Install now? (y/n): " do_install
+    if [[ "$do_install" == "y" ]]; then
+      for pkg in "${MISSING_NPM[@]}"; do
+        info "Installing $pkg globally..."
+        if npm install -g "$pkg" 2>&1; then
+          ok "Installed $pkg"
+          did_install=true
+        else
+          fail "Failed to install $pkg — may need: sudo npm install -g $pkg"
+        fi
+      done
+    fi
+  elif [[ "$has_npm" == "false" && ${#MISSING_NPM[@]} -gt 0 ]]; then
+    warn "npm not found — cannot auto-install: ${MISSING_NPM[*]}"
+    info "Install Node.js (includes npm): brew install node / https://nodejs.org"
+  fi
+
+  # Offer optional packages
+  if [[ "$has_brew" == "true" && ${#brew_optional[@]} -gt 0 ]]; then
+    printf "\n"
+    info "Optional packages available: ${brew_optional[*]}"
+    read -rp "Install optional packages too? (y/n): " do_install_opt
+    if [[ "$do_install_opt" == "y" ]]; then
+      for pkg in "${brew_optional[@]}"; do
+        info "Installing $pkg..."
+        if brew install "$pkg" 2>&1; then
+          ok "Installed $pkg"
+          did_install=true
+        else
+          warn "Failed to install $pkg (optional — continuing)"
+        fi
+      done
+    fi
+  fi
+
+  # Re-verify all dependencies after any installation
+  if [[ "$did_install" == "true" ]]; then
+    printf "\n"
+    info "Re-checking dependencies after install..."
+    ERRORS=0
+    WARNINGS=0
+    MISSING_BREW=()
+    MISSING_BREW_OPT=()
+    MISSING_NPM=()
+    check_dependencies
   fi
 }
 
@@ -287,8 +418,10 @@ generate_crontab() {
   local _jobs_dir="$jobs_dir"
   local _log_file="$log_file"
   local _ops_root="$OPS_ROOT"
+  local _home="$HOME"
   cat > "$crontab_file" <<'CRONTAB_TEMPLATE'
 SHELL=/bin/bash
+HOME=HOME_PLACEHOLDER
 PATH=CRON_PATH_PLACEHOLDER
 
 # PM: Morning triage — categorize and prioritize open issues
@@ -318,6 +451,7 @@ PATH=CRON_PATH_PLACEHOLDER
 CRONTAB_TEMPLATE
   # Substitute the placeholders with the actual expanded values
   sed -i.bak \
+    -e "s|HOME_PLACEHOLDER|${_home}|g" \
     -e "s|CRON_PATH_PLACEHOLDER|${_cron_path}|g" \
     -e "s|JOBS_DIR_PLACEHOLDER|${_jobs_dir}|g" \
     -e "s|LOG_FILE_PLACEHOLDER|${_log_file}|g" \
@@ -471,6 +605,145 @@ install_crontab() {
 }
 
 # ============================================================================
+# GitHub Actions Self-Hosted Runner Setup
+# ============================================================================
+
+setup_runner() {
+  local runner_dir="${HOME}/actions-runner"
+
+  if [[ -d "$runner_dir" && -f "${runner_dir}/run.sh" ]]; then
+    ok "GitHub Actions runner already installed at $runner_dir"
+    read -rp "  Reconfigure? (y/n): " reconfigure
+    if [[ "$reconfigure" != "y" ]]; then
+      info "Skipping runner setup"
+      info "Start the runner with: ./scripts/start-runner.sh"
+      return 0
+    fi
+  else
+    read -rp "Set up GitHub Actions self-hosted runner? (y/n): " do_setup_runner
+    if [[ "$do_setup_runner" != "y" ]]; then
+      info "Skipping runner setup"
+      info "Set up later: https://github.com/actions/runner/releases"
+      return 0
+    fi
+  fi
+
+  # Detect architecture
+  local arch
+  arch=$(uname -m)
+  local runner_arch
+  case "$arch" in
+    arm64|aarch64) runner_arch="arm64" ;;
+    x86_64)        runner_arch="x64" ;;
+    *)
+      fail "Unsupported architecture: $arch"
+      return 1
+      ;;
+  esac
+
+  local os
+  os=$(uname -s | tr '[:upper:]' '[:lower:]')
+  case "$os" in
+    darwin) os="osx" ;;
+    linux)  os="linux" ;;
+    *)
+      fail "Unsupported OS: $os"
+      return 1
+      ;;
+  esac
+
+  ok "Detected platform: ${os}-${runner_arch}"
+
+  # Get target repo URL for runner registration
+  printf "\n"
+  read -rp "  GitHub repo URL for runner registration (e.g., https://github.com/owner/repo): " repo_url
+  if [[ -z "$repo_url" ]]; then
+    fail "Repo URL is required for runner registration"
+    return 1
+  fi
+
+  # Validate URL format and extract owner/repo
+  local owner_repo
+  owner_repo=$(echo "$repo_url" | sed -n 's|.*github\.com/\([^/]*/[^/]*\).*|\1|p')
+  if [[ -z "$owner_repo" ]]; then
+    fail "Could not parse owner/repo from URL: $repo_url"
+    return 1
+  fi
+
+  # Get registration token via gh API
+  info "Getting runner registration token for $owner_repo..."
+  local token_response
+  if ! token_response=$(gh api "repos/${owner_repo}/actions/runners/registration-token" --method POST 2>&1); then
+    fail "Failed to get registration token: $token_response"
+    info "Ensure gh is authenticated with admin:repo scope"
+    return 1
+  fi
+
+  local reg_token
+  reg_token=$(echo "$token_response" | jq -r '.token // empty')
+  if [[ -z "$reg_token" ]]; then
+    fail "Registration token is empty — check your permissions"
+    return 1
+  fi
+
+  ok "Got registration token"
+
+  # Determine latest runner version
+  info "Fetching latest runner release..."
+  local latest_version
+  latest_version=$(gh api repos/actions/runner/releases/latest --jq '.tag_name' 2>/dev/null | sed 's/^v//') || true
+  if [[ -z "$latest_version" ]]; then
+    # Fallback to a known version
+    latest_version="2.321.0"
+    warn "Could not fetch latest version — using fallback: $latest_version"
+  fi
+
+  local tarball="actions-runner-${os}-${runner_arch}-${latest_version}.tar.gz"
+  local download_url="https://github.com/actions/runner/releases/download/v${latest_version}/${tarball}"
+
+  # Download and extract
+  mkdir -p "$runner_dir"
+  info "Downloading runner v${latest_version} (${os}-${runner_arch})..."
+  if ! curl -sL "$download_url" -o "${runner_dir}/${tarball}"; then
+    fail "Download failed: $download_url"
+    return 1
+  fi
+
+  info "Extracting..."
+  if ! tar -xzf "${runner_dir}/${tarball}" -C "$runner_dir"; then
+    fail "Extraction failed"
+    return 1
+  fi
+  rm -f "${runner_dir}/${tarball}"
+
+  ok "Runner extracted to $runner_dir"
+
+  # Configure
+  info "Configuring runner..."
+  local runner_name
+  runner_name="$(hostname)-claude-ops"
+
+  if (cd "$runner_dir" && ./config.sh --unattended \
+    --url "$repo_url" \
+    --token "$reg_token" \
+    --name "$runner_name" \
+    --labels "claude-ops,self-hosted" \
+    --replace 2>&1); then
+    ok "Runner configured as '$runner_name'"
+  else
+    fail "Runner configuration failed"
+    info "Try configuring manually: cd $runner_dir && ./config.sh --url $repo_url --token <token>"
+    return 1
+  fi
+
+  printf "\n"
+  ok "Runner setup complete"
+  info "Start the runner with: ./scripts/start-runner.sh"
+  info "The runner MUST run in a tmux session (not launchd) for keychain access."
+  info "See: docs/solutions/launchd-keychain-access.md"
+}
+
+# ============================================================================
 # Directory Setup
 # ============================================================================
 
@@ -564,9 +837,10 @@ print_summary() {
     printf "  2. Re-run: ./scripts/install.sh\n"
   else
     printf "  1. Review config: cat config.json\n"
-    printf "  2. Test dry run: ./scripts/dispatch.sh --role product-manager --target <name> --task 'test' --dry-run\n"
-    printf "  3. Install cron: crontab schedules/crontab\n"
-    printf "  4. Monitor: ./scripts/status.sh\n"
+    printf "  2. Start the runner: ./scripts/start-runner.sh\n"
+    printf "  3. Test dry run: ./scripts/dispatch.sh --role product-manager --target <name> --task 'test' --dry-run\n"
+    printf "  4. Install cron: crontab schedules/crontab\n"
+    printf "  5. Monitor: ./scripts/status.sh\n"
   fi
 }
 
@@ -583,6 +857,7 @@ main() {
   case "$mode" in
     --check)
       check_dependencies
+      offer_auto_install || true
       check_github_auth
       check_claude_auth
 
@@ -650,6 +925,9 @@ main() {
   # Step 1: Check dependencies
   check_dependencies
 
+  # Step 1b: Offer to install missing deps
+  offer_auto_install || true
+
   # Step 2: Check auth
   check_github_auth
   check_claude_auth
@@ -681,6 +959,14 @@ main() {
     else
       info "Skipped — install later with: ./scripts/install.sh (and choose y)"
     fi
+  fi
+
+  # Step 7: Runner setup
+  header "GitHub Actions runner"
+  if (( ERRORS > 0 )); then
+    warn "Skipping runner setup due to errors above"
+  else
+    setup_runner || true
   fi
 
   # Summary

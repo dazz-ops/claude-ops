@@ -34,10 +34,11 @@ claude-ops/
 ├── schedules/
 │   └── crontab                 # Reduced-frequency fallback (hybrid mode)
 ├── scripts/
-│   ├── install.sh              # Setup: deps, auth, config, crontab
+│   ├── install.sh              # Setup: deps, auth, config, runner, crontab
 │   ├── dispatch.sh             # Core dispatcher: loads role, invokes claude -p
 │   ├── lib.sh                  # Shared helpers: target enumeration, polling guards
 │   ├── status.sh               # Dashboard
+│   ├── start-runner.sh         # Start GitHub Actions runner in tmux session
 │   └── log-cleanup.sh          # Weekly cleanup
 ├── workflows/                  # GitHub Actions workflow templates (copy to target repos)
 ├── docs/plans/                 # Planning documents
@@ -142,3 +143,35 @@ git clone <repo-url> && cd claude-ops
 ```
 
 Requires: bash, jq, git, claude (Claude Code CLI), gh (GitHub CLI authenticated with repo scope)
+
+The installer will auto-detect missing dependencies and offer to install them via Homebrew/npm. It also offers to download and configure the GitHub Actions self-hosted runner.
+
+## Runner Setup
+
+The self-hosted GitHub Actions runner **must run in a tmux session**, not as a launchd service. This is because the Claude Code CLI stores OAuth credentials in `~/.claude/` and accesses them via the macOS login keychain. launchd services run outside the user's login session and cannot access the keychain, causing `claude -p` to fail with "Not logged in."
+
+```bash
+# Start the runner (idempotent — skips if session exists)
+./scripts/start-runner.sh
+
+# Or with a custom runner directory
+./scripts/start-runner.sh /path/to/actions-runner
+
+# Attach to see runner output
+tmux attach -t actions-runner
+
+# Stop the runner
+tmux kill-session -t actions-runner
+```
+
+See `docs/solutions/launchd-keychain-access.md` for the full analysis.
+
+### HOME in cron environments
+
+Cron and GitHub Actions runner environments may not inherit `HOME`. dispatch.sh sets it explicitly:
+
+```bash
+export HOME="${HOME:-$(eval echo ~"$(whoami)")}"
+```
+
+The generated crontab also includes `HOME=...` in its environment block.

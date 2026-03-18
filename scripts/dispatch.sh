@@ -23,6 +23,10 @@ CONFIG="${CONFIG:-${OPS_ROOT}/config.json}"
 STATE_DIR="${STATE_DIR:-${OPS_ROOT}/state}"
 LOG_DIR="${LOG_DIR:-${OPS_ROOT}/logs}"
 
+# Ensure HOME is set — cron and GitHub Actions runners may not inherit it.
+# claude CLI needs HOME to find its auth credentials (~/.claude/).
+export HOME="${HOME:-$(eval echo ~"$(whoami)")}"
+
 # ============================================================================
 # Utilities
 # ============================================================================
@@ -555,6 +559,10 @@ invoke_agent() {
     return 143
   elif [[ $ec -ne 0 ]]; then
     log_warn "Agent exited with code $ec"
+    # Dump raw output for debugging before deleting
+    if [[ -s "$tmpout" ]]; then
+      log_warn "Agent raw output: $(cat "$tmpout")"
+    fi
     rm -f "$tmpout"
     return "$ec"
   fi

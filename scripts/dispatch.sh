@@ -25,7 +25,13 @@ LOG_DIR="${LOG_DIR:-${OPS_ROOT}/logs}"
 
 # Ensure HOME is set — cron and GitHub Actions runners may not inherit it.
 # claude CLI needs HOME to find its auth credentials (~/.claude/).
-export HOME="${HOME:-$(eval echo ~"$(whoami)")}"
+# Use dscl (macOS) or getent (Linux) to resolve home dir without eval.
+if [[ -z "${HOME:-}" ]]; then
+  HOME=$(dscl . -read /Users/"$(whoami)" NFSHomeDirectory 2>/dev/null | awk '{print $2}') || \
+  HOME=$(getent passwd "$(whoami)" 2>/dev/null | cut -d: -f6) || \
+  HOME="/Users/$(whoami)"
+  export HOME
+fi
 
 # ============================================================================
 # Utilities
@@ -121,6 +127,13 @@ check_budget() {
   local invocations
   invocations=$(jq '.invocations' "$budget_file")
 
+  # Validate jq returned a valid integer — corrupted budget file could crash arithmetic
+  if ! [[ "$invocations" =~ ^[0-9]+$ ]]; then
+    log_warn "Budget file corrupted (invocations='$invocations') — resetting"
+    rm -f "$budget_file"
+    return 0
+  fi
+
   if (( invocations >= max_invocations )); then
     log_error "Daily invocation limit reached: $invocations >= $max_invocations"
     notify "Limit reached" "Daily cap of $max_invocations invocations hit."
@@ -203,6 +216,16 @@ notify() {
 # Locking (per-target)
 # ============================================================================
 
+# Write PID file atomically via temp file + mv to eliminate the gap
+# between mkdir and PID write where a crash leaves a lockdir with no PID.
+_write_pid() {
+  local lockdir="$1"
+  local pid_tmp
+  pid_tmp=$(mktemp "${lockdir}/pid.XXXXXX")
+  echo $$ > "$pid_tmp"
+  mv "$pid_tmp" "${lockdir}/pid"
+}
+
 acquire_target_lock() {
   local target_name="$1"
   local lockdir="${STATE_DIR}/locks/${target_name}.lock"
@@ -231,7 +254,7 @@ acquire_target_lock() {
     if mv "$lockdir" "$stale_name" 2>/dev/null; then
       # We successfully moved the stale lock aside
       if mkdir "$lockdir" 2>/dev/null; then
-        echo $$ > "${lockdir}/pid"
+        _write_pid "$lockdir"
         rm -rf "$stale_name" 2>/dev/null || true
         return 0
       else
@@ -252,7 +275,7 @@ acquire_target_lock() {
   local stale_name="${lockdir}.stale.$$"
   if mv "$lockdir" "$stale_name" 2>/dev/null; then
     if mkdir "$lockdir" 2>/dev/null; then
-      echo $$ > "${lockdir}/pid"
+      _write_pid "$lockdir"
       rm -rf "$stale_name" 2>/dev/null || true
       return 0
     else
@@ -289,7 +312,7 @@ acquire_budget_lock() {
 
   while (( attempt < max_attempts )); do
     if mkdir "$lockdir" 2>/dev/null; then
-      echo $$ > "${lockdir}/pid"
+      _write_pid "$lockdir"
       return 0
     fi
 
@@ -302,6 +325,7 @@ acquire_budget_lock() {
         local stale_name="${lockdir}.stale.$$"
         if mv "$lockdir" "$stale_name" 2>/dev/null; then
           rm -rf "$stale_name" 2>/dev/null || true
+          attempt=$(( attempt + 1 ))
           continue  # retry mkdir on next iteration
         fi
       fi
@@ -342,11 +366,25 @@ load_role() {
     exit 1
   fi
 
-  # Extract frontmatter fields using yq --front-matter=extract
-  ROLE_TOOLS=$(yq --front-matter=extract '.tools // ""' "$role_file" 2>/dev/null) || ROLE_TOOLS=""
-  ROLE_DISALLOWED_TOOLS=$(yq --front-matter=extract '.disallowedTools // ""' "$role_file" 2>/dev/null) || ROLE_DISALLOWED_TOOLS=""
-  ROLE_SKILLS=$(yq --front-matter=extract '.skills // ""' "$role_file" 2>/dev/null) || ROLE_SKILLS=""
-  ROLE_MODE=$(yq --front-matter=extract '.mode // ""' "$role_file" 2>/dev/null) || ROLE_MODE=""
+  # Extract frontmatter fields using yq --front-matter=extract.
+  # Do NOT suppress stderr — yq errors indicate a corrupt role file and must abort.
+  # An empty disallowedTools on a read-only role = privilege escalation.
+  if ! ROLE_TOOLS=$(yq --front-matter=extract '.tools // ""' "$role_file"); then
+    log_error "Failed to parse role file: $role_file (yq error)"
+    exit 1
+  fi
+  if ! ROLE_DISALLOWED_TOOLS=$(yq --front-matter=extract '.disallowedTools // ""' "$role_file"); then
+    log_error "Failed to parse role file: $role_file (yq error)"
+    exit 1
+  fi
+  if ! ROLE_SKILLS=$(yq --front-matter=extract '.skills // ""' "$role_file"); then
+    log_error "Failed to parse role file: $role_file (yq error)"
+    exit 1
+  fi
+  if ! ROLE_MODE=$(yq --front-matter=extract '.mode // ""' "$role_file"); then
+    log_error "Failed to parse role file: $role_file (yq error)"
+    exit 1
+  fi
 
   # Trim whitespace from parsed values
   ROLE_TOOLS="${ROLE_TOOLS## }"; ROLE_TOOLS="${ROLE_TOOLS%% }"
@@ -542,6 +580,13 @@ invoke_agent() {
   # Developer role has an empty disallowedTools (full access).
   if [[ -n "$disallowed_tools" ]]; then
     cmd+=(--disallowedTools "$disallowed_tools")
+  fi
+
+  # Validate target directory is still accessible before invoking
+  if [[ ! -d "$target_path" ]]; then
+    log_error "Target path no longer accessible: $target_path"
+    rm -f "$tmpout"
+    return 1
   fi
 
   # Execute in target directory with timeout
@@ -757,9 +802,9 @@ main() {
     record_invocation "$ROLE" "$TARGET" "$duration" "$ec" "$LAST_INPUT_TOKENS" "$LAST_OUTPUT_TOKENS"
     release_budget_lock
   else
-    # Fail-open: record without lock rather than losing the invocation data
-    log_warn "Could not acquire budget lock for record_invocation — recording unlocked"
-    record_invocation "$ROLE" "$TARGET" "$duration" "$ec" "$LAST_INPUT_TOKENS" "$LAST_OUTPUT_TOKENS"
+    # Fail-closed: skip recording rather than corrupting budget file without lock.
+    # A missed count is safer than a non-atomic read-modify-write race.
+    log_warn "Could not acquire budget lock for record_invocation — skipping (invocation will not be counted)"
   fi
 
   if [[ $ec -ne 0 ]]; then

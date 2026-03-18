@@ -39,16 +39,22 @@ echo ""
 
 # Active locks
 echo "Active Locks:"
-lock_dirs=$(find "${STATE_DIR}/locks" -maxdepth 1 -name "*.lock" -type d 2>/dev/null || true)
-if [[ -n "$lock_dirs" ]]; then
-  echo "$lock_dirs" | while read -r lockdir; do
+if [[ -d "${STATE_DIR}/locks" ]]; then
+  local_lock_found=false
+  while IFS= read -r -d '' lockdir; do
+    local_lock_found=true
     target=$(basename "$lockdir" .lock)
     pid="unknown"
     if [[ -f "${lockdir}/pid" ]]; then pid=$(<"${lockdir}/pid"); fi
     alive="dead"
-    kill -0 "$pid" 2>/dev/null && alive="alive" || true
+    if [[ "$pid" != "unknown" ]]; then
+      kill -0 "$pid" 2>/dev/null && alive="alive" || true
+    fi
     echo "  $target — pid $pid ($alive)"
-  done
+  done < <(find "${STATE_DIR}/locks" -maxdepth 1 -name "*.lock" -type d -print0 2>/dev/null)
+  if [[ "$local_lock_found" == "false" ]]; then
+    echo "  None"
+  fi
 else
   echo "  None"
 fi
@@ -57,12 +63,12 @@ echo ""
 # Recent logs
 echo "Recent Logs:"
 if [[ -d "$LOG_DIR" ]]; then
-  log_files=$(find "$LOG_DIR" -maxdepth 1 -name "*.log" -type f 2>/dev/null | head -5)
-  if [[ -n "$log_files" ]]; then
-    echo "$log_files" | while read -r f; do
-      echo "  $(basename "$f") ($(wc -l < "$f" | tr -d ' ') lines)"
-    done
-  else
+  local_log_found=false
+  while IFS= read -r -d '' f; do
+    local_log_found=true
+    echo "  $(basename "$f") ($(wc -l < "$f" | tr -d ' ') lines)"
+  done < <(find "$LOG_DIR" -maxdepth 1 -name "*.log" -type f -print0 2>/dev/null | head -z -n 5 2>/dev/null || find "$LOG_DIR" -maxdepth 1 -name "*.log" -type f -print0 2>/dev/null)
+  if [[ "$local_log_found" == "false" ]]; then
     echo "  No logs yet"
   fi
 else

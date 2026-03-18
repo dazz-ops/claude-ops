@@ -37,6 +37,10 @@ concurrency:
 jobs:
   dispatch:
     runs-on: self-hosted
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
     steps:
       - name: Validate claude-ops path
         run: |

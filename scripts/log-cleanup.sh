@@ -13,7 +13,12 @@ CONFIG="${OPS_ROOT}/config.json"
 STATE_DIR="${OPS_ROOT}/state"
 LOG_DIR="${OPS_ROOT}/logs"
 
-retention_days=$(jq -r '.defaults.log_retention_days // 7' "$CONFIG")
+if [[ -f "$CONFIG" ]]; then
+  retention_days=$(jq -r '.defaults.log_retention_days // 7' "$CONFIG")
+else
+  echo "[cleanup] config.json not found — using default retention (7 days)"
+  retention_days=7
+fi
 jsonl_max_bytes="${JSONL_MAX_BYTES:-1048576}"  # 1MB default threshold for rotation
 jsonl_max_age_days="${JSONL_MAX_AGE_DAYS:-7}"  # Rotate if older than 7 days
 jsonl_retention_days="${JSONL_RETENTION_DAYS:-30}"  # Keep rotated files 30 days
@@ -77,7 +82,11 @@ rotate_jsonl() {
     rotated_name="invocations-${date_stamp}-$(date +%H%M%S).jsonl"
   fi
 
+  # Note: mv is atomic but a concurrent record_invocation append could re-create
+  # invocations.jsonl between mv and the next dispatch. This is an acceptable
+  # minor data loss window for a weekly audit log rotation.
   mv "$INVOCATIONS_FILE" "${STATE_DIR}/${rotated_name}"
+  touch "$INVOCATIONS_FILE"  # Recreate immediately to minimize window
   gzip "${STATE_DIR}/${rotated_name}" 2>/dev/null || true
 
   echo "[cleanup] Rotated to ${rotated_name}.gz"

@@ -20,6 +20,9 @@ concurrency:
 jobs:
   review:
     runs-on: self-hosted
+    permissions:
+      contents: read
+      issues: write
     steps:
       - name: Validate claude-ops path
         run: |

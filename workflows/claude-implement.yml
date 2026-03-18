@@ -20,6 +20,10 @@ jobs:
   implement:
     if: github.event.label.name == 'ready_for_dev'
     runs-on: self-hosted
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
     steps:
       - name: Validate claude-ops path
         run: |

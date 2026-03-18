@@ -27,6 +27,9 @@ jobs:
       github.event.review.state == 'changes_requested' &&
       github.event.pull_request.head.repo.fork == false
     runs-on: self-hosted
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Validate claude-ops path
         run: |

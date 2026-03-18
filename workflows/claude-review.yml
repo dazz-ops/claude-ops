@@ -22,6 +22,9 @@ jobs:
     # See docs/solutions/github-actions-self-hosted-runner-security-gotchas.md
     if: github.event.pull_request.head.repo.fork == false
     runs-on: self-hosted
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Validate claude-ops path
         run: |

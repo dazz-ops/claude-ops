@@ -459,6 +459,12 @@ CRONTAB_TEMPLATE
     "$crontab_file"
   rm -f "${crontab_file}.bak"
 
+  # Verify all placeholders were resolved — an empty variable leaves literal PLACEHOLDER text
+  if grep -qE '_PLACEHOLDER' "$crontab_file"; then
+    fail "Crontab contains unresolved placeholders — check that HOME, PATH, and script paths are set"
+    return 1
+  fi
+
   ok "Generated crontab: $crontab_file"
 }
 
@@ -900,6 +906,12 @@ main() {
       local current_cron
       current_cron=$(crontab -l 2>/dev/null) || true
       if echo "$current_cron" | grep -qF "$SENTINEL_BEGIN"; then
+        # Validate sentinel integrity — dangling BEGIN without END would delete to EOF
+        if ! echo "$current_cron" | grep -qF "$SENTINEL_END"; then
+          fail "Crontab has $SENTINEL_BEGIN but no matching $SENTINEL_END — aborting to avoid data loss"
+          fail "Fix manually: crontab -e"
+          exit 1
+        fi
         local stripped
         stripped=$(echo "$current_cron" | strip_sentinel_block | sed -e :a -e '/^\n*$/{$d;N;ba}')
         if [[ -z "$stripped" ]]; then

@@ -1,8 +1,8 @@
 # claude-ops
 
-Autonomous agent orchestration system. Uses **GitHub Actions event-driven triggers** (primary) and **cron fallback** (catch-up) to invoke Claude Code CLI across four roles (PM, Developer, Code Reviewer, Tech Lead) targeting repos with the godmode protocol installed.
+Autonomous agent orchestration system. Uses **GitHub Actions event-driven triggers** (primary) and **cron fallback** (catch-up) to invoke Claude Code CLI across four roles (PM, Developer, Code Reviewer, Tech Lead) targeting repos in the `dazz-ops` GitHub organization.
 
-The Mac Mini acts as a self-hosted GitHub Actions runner, reacting to GitHub events within minutes. Cron serves as a reduced-frequency fallback for missed events.
+The Mac Mini acts as an org-level self-hosted GitHub Actions runner, reacting to GitHub events within minutes. Cron serves as a reduced-frequency fallback for missed events. Workflow logic is centralized via **reusable workflows** — target repos contain only thin caller files (~15 lines).
 
 ## Quick Start
 
@@ -40,7 +40,9 @@ claude-ops/
 │   ├── status.sh               # Dashboard
 │   ├── start-runner.sh         # Start GitHub Actions runner in tmux session
 │   └── log-cleanup.sh          # Weekly cleanup
-├── workflows/                  # GitHub Actions workflow templates (copy to target repos)
+├── .github/workflows/          # Reusable workflows (workflow_call — job logic lives here)
+├── callers/                    # Thin caller templates for target repos (~15 lines each)
+├── workflows/                  # Legacy workflow templates (deprecated — use callers/ instead)
 ├── docs/plans/                 # Planning documents
 ├── docs/solutions/             # Captured learnings
 ├── state/                      # Runtime (gitignored)
@@ -51,15 +53,18 @@ claude-ops/
 
 ```
 GitHub Event (issue opened, PR created, label added)
-  → GitHub Actions workflow fires (in target repo, from workflows/ templates)
-  → Runs on self-hosted runner (Mac Mini)
+  → Thin caller workflow fires (in target repo, from callers/ templates)
+  → Calls reusable workflow in dazz-ops/claude-ops/.github/workflows/
+  → Runs on org-level self-hosted runner (Mac Mini)
   → Calls dispatch.sh with target name + event context
   → dispatch.sh handles everything: role, locking, budget, claude -p, logging
 
-Cron (fallback — daily 22:00 for most jobs)
+Cron (fallback — daily catch-up)
   → Same jobs/*.sh scripts
   → Polling guards skip if no work remains (deduplication)
 ```
+
+**Kill switch:** Set `CLAUDE_OPS_ENABLED=false` as a repo variable on any target repo to disable all claude-ops workflows instantly.
 
 | Trigger | Workflow | Job Script |
 |---------|----------|-----------|

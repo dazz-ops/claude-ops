@@ -32,22 +32,34 @@ This starts the GitHub Actions self-hosted runner in a tmux session. It **must**
 
 ## 4. Set up workflows in your target repo
 
-Copy the workflow templates and set the required repo variables:
+Copy the thin **caller** templates (not the full workflows) and set repo variables:
 
 ```bash
-# Copy workflows
-cp workflows/claude-*.yml /path/to/your-repo/.github/workflows/
+# Copy caller templates (~15 lines each, call reusable workflows in claude-ops)
+cp callers/claude-*.yml /path/to/your-repo/.github/workflows/
 
-# Set variables (replace owner/repo and target name)
-gh variable set CLAUDE_OPS_HOME --body "$(pwd)" --repo owner/repo
-gh variable set TARGET_NAME --body "your-target-name" --repo owner/repo
+# Set variables (replace org/repo and target name)
+gh variable set CLAUDE_OPS_HOME --body "$(pwd)" --repo dazz-ops/your-repo
+gh variable set TARGET_NAME --body "your-target-name" --repo dazz-ops/your-repo
 
-# Commit and push the workflows
+# Commit and push
 cd /path/to/your-repo
 git add .github/workflows/claude-*.yml
-git commit -m "feat: add claude-ops workflow triggers"
+git commit -m "feat: add claude-ops workflow callers"
 git push
 ```
+
+The callers never need updating — all job logic lives in `dazz-ops/claude-ops/.github/workflows/`.
+
+### Kill switch
+
+To disable claude-ops on any repo without removing files:
+
+```bash
+gh variable set CLAUDE_OPS_ENABLED --body "false" --repo dazz-ops/your-repo
+```
+
+Set back to `true` (or delete the variable) to re-enable.
 
 ## 5. Test it
 
@@ -144,15 +156,16 @@ No agent can merge PRs, push to main, or force push. Humans stay in the loop.
 
 ## Adding more target repos
 
-1. Add to `config.json`:
+1. Ensure the repo is in the `dazz-ops` org
+2. Add to `config.json`:
    ```json
    {"name": "new-repo", "path": "/path/to/new-repo", "branch": "main", "enabled": true}
    ```
-2. Copy workflows: `cp workflows/claude-*.yml /path/to/new-repo/.github/workflows/`
-3. Set repo variables: `CLAUDE_OPS_HOME` and `TARGET_NAME`
-4. Commit and push the workflows
+3. Copy callers: `cp callers/claude-*.yml /path/to/new-repo/.github/workflows/`
+4. Set repo variables: `CLAUDE_OPS_HOME`, `TARGET_NAME`
+5. Commit and push the callers
 
-Cron automatically picks up new targets — no schedule changes needed.
+No runner registration needed — the org-level runner handles all repos automatically. Cron also picks up new targets — no schedule changes needed.
 
 ## Troubleshooting
 
@@ -162,6 +175,7 @@ Cron automatically picks up new targets — no schedule changes needed.
 | Agent fails in 0-1 seconds | Check `logs/cron.log` and run `./scripts/install.sh --check` |
 | "Daily invocation limit reached" | Wait for next day or increase `max_daily_invocations` in config.json |
 | Cron jobs not firing | Verify with `crontab -l` — look for the sentinel block |
-| Workflow queued forever | Check runner is online: `gh api repos/owner/repo/actions/runners` |
+| Workflow queued forever | Check runner is online: `gh api orgs/dazz-ops/actions/runners` |
+| Want to disable claude-ops temporarily | `gh variable set CLAUDE_OPS_ENABLED --body "false" --repo dazz-ops/your-repo` |
 
 For more details, see the full [README](../README.md) and [CLAUDE.md](../CLAUDE.md).
